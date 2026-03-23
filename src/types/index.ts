@@ -125,6 +125,14 @@ export interface EscalationRequest {
   context: string;
   options: string[];
   urgency: 'blocking' | 'important' | 'informational';
+  retryCount?: number;
+}
+
+export type EscalationAction = 'continue' | 'skip' | 'stop' | 'retry';
+
+export interface EscalationResponse {
+  action: EscalationAction;
+  feedback?: string;
 }
 
 // ============================================================

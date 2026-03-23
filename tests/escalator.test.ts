@@ -71,6 +71,6 @@ describe('Escalator', () => {
     
     expect(formatted).toContain('ESKALASYON');
     expect(formatted).toContain('T001');
-    expect(formatted).toContain('Seçenekler');
+    expect(formatted).toContain('1.');
   });
 });

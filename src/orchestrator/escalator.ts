@@ -2,15 +2,29 @@
  * Orchestrator — Escalator
  * 
  * İnsan müdahalesi gereken durumları yönetir.
- * Eskalasyon kararı verir, formatlar, yanıt bekler.
+ * Terminal'den gerçek readline ile kullanıcı yanıtı alır.
+ * 
+ * Tasarım ilkesi #2: Fail-Safe — şüphe durumunda insana sor
  */
 
+import { createInterface } from 'node:readline';
 import type { 
-  EscalationRequest, 
-  EvaluationResult 
+  EscalationRequest,
+  EscalationResponse,
+  EvaluationResult,
 } from '../types/index.js';
 
 export class Escalator {
+  /** Readline override (test injection) */
+  private _askFn: ((prompt: string) => Promise<string>) | null = null;
+
+  /**
+   * Test'ler için readline'ı override et
+   */
+  setAskFn(fn: (prompt: string) => Promise<string>): void {
+    this._askFn = fn;
+  }
+
   /**
    * Değerlendirme sonucuna göre eskalasyon gerekip gerekmediğine karar verir
    */
@@ -21,7 +35,7 @@ export class Escalator {
   /**
    * Eskalasyon request'i oluşturur
    */
-  createEscalation(evaluation: EvaluationResult): EscalationRequest {
+  createEscalation(evaluation: EvaluationResult, retryCount?: number): EscalationRequest {
     const criticalIssues = evaluation.issues.filter(i => i.severity === 'critical');
     const hasScoreDrop = Math.min(
       evaluation.consistencyScore,
@@ -32,11 +46,26 @@ export class Escalator {
     return {
       taskId: evaluation.taskId,
       reason: this.formatReason(evaluation),
-      context: this.formatContext(evaluation),
+      context: this.formatContext(evaluation, retryCount),
       options: this.generateOptions(evaluation),
       urgency: criticalIssues.length > 0 ? 'blocking' : 
                hasScoreDrop ? 'important' : 'informational',
+      retryCount,
     };
+  }
+
+  /**
+   * Eskalasyonu terminal'e yaz ve kullanıcıdan yanıt al
+   */
+  async promptUser(escalation: EscalationRequest): Promise<EscalationResponse> {
+    const formatted = this.formatForHuman(escalation);
+    console.log(formatted);
+
+    const answer = await this.ask(
+      '\n  Seçiminiz (1=devam / 2=atla / 3=durdur): '
+    );
+
+    return this.parseResponse(answer.trim());
   }
 
   /**
@@ -49,21 +78,51 @@ export class Escalator {
       informational: 'ℹ️',
     };
 
+    const retryInfo = escalation.retryCount != null 
+      ? `\n🔄 Retry sayısı: ${escalation.retryCount}` 
+      : '';
+
     return `
 ${urgencyEmoji[escalation.urgency]} ESKALASYON — Task: ${escalation.taskId}
 ${'═'.repeat(50)}
 
 📋 Sebep: ${escalation.reason}
-
+${retryInfo}
 📝 Bağlam:
 ${escalation.context}
 
 🔀 Seçenekler:
-${escalation.options.map((opt, i) => `  ${i + 1}. ${opt}`).join('\n')}
-
-Yanıtınızı bekliyorum (numara veya açıklama)...
+  1. Devam et — bu çıktıyı kabul et ve ilerle
+  2. Atla — bu task'ı atla, sonrakine geç
+  3. Durdur — projeyi duraklat
 `;
   }
+
+  /**
+   * Kullanıcı yanıtını parse et
+   */
+  parseResponse(input: string): EscalationResponse {
+    const lower = input.toLowerCase();
+
+    // Numara ile seçim
+    if (lower === '1' || lower.startsWith('devam')) {
+      return { action: 'continue' };
+    }
+    if (lower === '2' || lower.startsWith('atla') || lower.startsWith('skip')) {
+      return { action: 'skip' };
+    }
+    if (lower === '3' || lower.startsWith('dur') || lower.startsWith('stop')) {
+      return { action: 'stop' };
+    }
+    if (lower.startsWith('retry') || lower.startsWith('tekrar')) {
+      return { action: 'retry', feedback: input };
+    }
+
+    // Default: devam et
+    return { action: 'continue', feedback: input };
+  }
+
+  // ── Private ─────────────────────────────────────────────
 
   private formatReason(evaluation: EvaluationResult): string {
     const issues = evaluation.issues
@@ -86,23 +145,30 @@ Yanıtınızı bekliyorum (numara veya açıklama)...
     return `Düşük skorlar: ${lowScores.join(', ')}`;
   }
 
-  private formatContext(evaluation: EvaluationResult): string {
-    return [
+  private formatContext(evaluation: EvaluationResult, retryCount?: number): string {
+    const parts = [
       `Tutarlılık: ${(evaluation.consistencyScore * 100).toFixed(0)}%`,
       `Kalite: ${(evaluation.qualityScore * 100).toFixed(0)}%`,
       `Misyon Uyumu: ${(evaluation.missionAlignment * 100).toFixed(0)}%`,
-      evaluation.feedback ? `\nGeri bildirim: ${evaluation.feedback}` : '',
-    ].filter(Boolean).join('\n');
+    ];
+
+    if (retryCount != null) {
+      parts.push(`Retry: ${retryCount}/3 tamamlandı`);
+    }
+
+    if (evaluation.feedback) {
+      parts.push(`\nGeri bildirim: ${evaluation.feedback}`);
+    }
+
+    return parts.join('\n');
   }
 
   private generateOptions(evaluation: EvaluationResult): string[] {
     const options: string[] = [];
 
-    // Her zaman mevcut seçenekler
     options.push('Devam et — bu çıktıyı kabul et ve ilerle');
-    options.push('Revize et — agent\'a geri bildirimle tekrar gönder');
+    options.push('Atla — bu task\'ı atla, sonrakine geç');
 
-    // Sorun türüne göre ek seçenekler
     const categories = new Set(evaluation.issues.map(i => i.category));
 
     if (categories.has('scope-creep')) {
@@ -111,12 +177,28 @@ Yanıtınızı bekliyorum (numara veya açıklama)...
     if (categories.has('architecture-violation')) {
       options.push('Mimariyi güncelle — ARCHITECTURE.md\'yi revize et');
     }
-    if (categories.has('mission-drift')) {
-      options.push('Misyonu hatırlat — agent\'a MISSION.md\'yi yeniden oku');
-    }
 
-    options.push('Durdur — projeyi duraklat, sonra devam ederiz');
+    options.push('Durdur — projeyi duraklat');
 
     return options;
+  }
+
+  private ask(prompt: string): Promise<string> {
+    // Test injection
+    if (this._askFn) {
+      return this._askFn(prompt);
+    }
+
+    // Gerçek readline
+    return new Promise((resolve) => {
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question(prompt, (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+    });
   }
 }

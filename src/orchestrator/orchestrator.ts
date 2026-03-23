@@ -18,6 +18,7 @@ import type {
   OrchestrationSession,
   AgentResult,
   EvaluationResult,
+  EscalationResponse,
   Phase,
   Decision,
 } from '../types/index.js';
@@ -202,7 +203,15 @@ export class Orchestrator {
 
       case 'escalate':
         this.log(`  🚨 Eskalasyon gerekli!`);
-        await this.handleEscalation(evaluation);
+        const escResponse = await this.handleEscalation(evaluation);
+        if (escResponse.action === 'continue') {
+          await this.markTaskComplete(result);
+        } else if (escResponse.action === 'skip') {
+          await this.markTaskSkipped(result);
+        } else if (escResponse.action === 'stop') {
+          await this.transitionPhase('paused');
+          throw new Error(`Orchestration paused by user at task ${result.taskId}`);
+        }
         break;
     }
 
@@ -236,15 +245,25 @@ export class Orchestrator {
     const maxRetries = this.config.maxRetries;
 
     if (retryCount >= maxRetries) {
-      this.log(`  🚨 Max retry (${maxRetries}) aşıldı — eskalasyon`);
-      await this.handleEscalation(evaluation);
+      this.log(`  🚨 Max retry (${maxRetries}) aşıldı — eskalasyon tetikleniyor`);
+      const response = await this.handleEscalation(evaluation, retryCount);
+      
+      if (response.action === 'continue') {
+        this.log('  ✅ Kullanıcı kabul etti, devam ediliyor');
+        await this.markTaskComplete(result);
+      } else if (response.action === 'skip') {
+        this.log('  ⏭️ Kullanıcı atladı');
+        await this.markTaskSkipped(result);
+      } else if (response.action === 'stop') {
+        this.log('  ⏹️ Kullanıcı durdurdu');
+        await this.transitionPhase('paused');
+        throw new Error(`Orchestration paused by user at task ${result.taskId}`);
+      }
       return;
     }
 
-    this.log(`  🔄 Revize ediliyor (deneme ${retryCount + 1}/${maxRetries})`);
-    this.log(`  📝 Geri bildirim: ${evaluation.feedback ?? 'Belirtilmemiş'}`);
+    this.log(`  🔄 Retry ${retryCount + 1}/${maxRetries} — feedback ile agent'a gönderiliyor`);
 
-    // Task'ı bul ve feedback ile yeniden çalıştır
     const task = this.taskMap.get(result.taskId);
     if (!task) {
       this.log(`  ❌ Task tanımı bulunamadı, kabul ediliyor`);
@@ -252,31 +271,62 @@ export class Orchestrator {
       return;
     }
 
-    // Feedback'i task açıklamasına ekle
+    // Feedback'i task açıklamasına ekle — agent'ın ne düzeltmesi gerektiğini bilsin
+    const issueList = evaluation.issues
+      .map(i => `- [${i.severity}] ${i.category}: ${i.description}`)
+      .join('\n');
+
     const revisedTask: TaskDefinition = {
       ...task,
-      description: `${task.description}\n\n⚠️ ÖNCEKİ DENEME GERİ BİLDİRİMİ:\n${evaluation.feedback ?? 'Kalite skorları düşük, daha dikkatli çalış.'}\n\nÖnceki sorunlar:\n${evaluation.issues.map(i => `- [${i.severity}] ${i.category}: ${i.description}`).join('\n')}`,
+      description: `${task.description}
+
+⚠️ RETRY ${retryCount + 1}/${maxRetries} — ÖNCEKİ DENEME BAŞARISIZ
+
+Geri bildirim: ${evaluation.feedback ?? 'Kalite kontrolleri geçemedi.'}
+
+Tespit edilen sorunlar:
+${issueList || '- Genel kalite düşük'}
+
+Skorlar: tutarlılık ${(evaluation.consistencyScore * 100).toFixed(0)}%, kalite ${(evaluation.qualityScore * 100).toFixed(0)}%, misyon ${(evaluation.missionAlignment * 100).toFixed(0)}%
+
+BU SORUNLARI DÜZELT ve tekrar dene.`,
     };
+
+    this.addStep({
+      action: 'execute',
+      taskId: result.taskId,
+    });
 
     const memory = await this.memory.snapshot();
     const retryResult = await this.agentRunner.runTask(revisedTask, memory);
 
+    this.log(`  ${retryResult.success ? '✅' : '❌'} Retry ${retryCount + 1} sonuç: ${retryResult.success ? 'başarılı' : 'başarısız'}`);
+
     // Yeni sonucu tekrar değerlendir
     const retryEval = await this.evaluator.evaluate(retryResult, memory);
 
+    this.addStep({
+      action: 'evaluate',
+      taskId: retryResult.taskId,
+      result: retryEval,
+    });
+
+    this.log(`  📊 Retry ${retryCount + 1} eval: ${retryEval.verdict}`);
+
     if (retryEval.verdict === 'accept') {
-      this.log(`  ✅ Revize sonrası kabul edildi`);
+      this.log(`  ✅ Retry ${retryCount + 1} sonrası kabul edildi`);
       await this.markTaskComplete(retryResult);
-    } else if (retryEval.verdict === 'revise') {
-      await this.handleRevision(retryResult, retryEval, retryCount + 1);
     } else {
-      await this.handleEscalation(retryEval);
+      // revise veya escalate → tekrar dene
+      await this.handleRevision(retryResult, retryEval, retryCount + 1);
     }
   }
 
-  private async handleEscalation(evaluation: EvaluationResult): Promise<void> {
-    const escalation = this.escalator.createEscalation(evaluation);
-    const formatted = this.escalator.formatForHuman(escalation);
+  private async handleEscalation(
+    evaluation: EvaluationResult,
+    retryCount?: number
+  ): Promise<EscalationResponse> {
+    const escalation = this.escalator.createEscalation(evaluation, retryCount);
     
     this.addStep({
       action: 'escalate',
@@ -284,9 +334,25 @@ export class Orchestrator {
       result: evaluation,
     });
 
-    // TODO: Gerçek kullanıcı etkileşimi
-    console.log(formatted);
-    this.log('  ⏳ Kullanıcı yanıtı bekleniyor...');
+    const response = await this.escalator.promptUser(escalation);
+    this.log(`  👤 Kullanıcı yanıtı: ${response.action}`);
+    return response;
+  }
+
+  private async markTaskSkipped(result: AgentResult): Promise<void> {
+    const state = await this.memory.parseState();
+    const taskIdx = state.activeTasks.findIndex(t => t.taskId === result.taskId);
+    
+    if (taskIdx >= 0) {
+      const task = state.activeTasks.splice(taskIdx, 1)[0]!;
+      task.status = 'skipped';
+      task.completedAt = new Date().toISOString();
+      task.output = 'Skipped by user during escalation';
+      state.completedTasks.push(task);
+    }
+
+    state.lastUpdated = new Date().toISOString();
+    await this.memory.updateState(state);
   }
 
   // ── State Management ────────────────────────────────────

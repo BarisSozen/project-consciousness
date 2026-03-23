@@ -155,3 +155,14 @@
 - **Gerekçe**: Sistemin gerçek bir kod üretim + değerlendirme döngüsünü kanıtlaması
 - **Alternatifler**: Manuel test (otomasyon kanıtı olmaz)
 - **Durum**: active
+
+---
+
+## D015 — Retry Loop + Escalation: Gerçek Kullanıcı Etkileşimi
+
+- **Tarih**: 2026-03-24T01:25:00+03:00
+- **Bağlam**: Agent başarısız olduğunda otomatik retry ve insan müdahalesi (T005)
+- **Karar**: Max 3 retry, her retry'da feedback chain prompt'a eklenir. 3 retry sonrası Escalator readline ile kullanıcıya sorar (devam/atla/durdur). Test injection için setAskFn().
+- **Gerekçe**: Retry ile küçük hataları otomatik düzelt, büyük sorunlarda insana sor. Fail-safe ilkesi (D001 tasarım ilkeleri).
+- **Alternatifler**: Sonsuz retry (tehlikeli), her hata direkt eskalasyon (gereksiz müdahale), sadece log (sessiz hata)
+- **Durum**: active
