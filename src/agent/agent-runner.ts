@@ -27,6 +27,8 @@ export interface AgentRunnerConfig {
   timeout?: number;
   /** Max recursion depth (prevents infinite agent spawning) */
   maxDepth?: number;
+  /** Allowed tools for agents (default: ['Read', 'Write', 'Edit', 'Bash']) */
+  allowedTools?: string[];
   /** Additional environment variables for agents */
   env?: Record<string, string>;
   /** Log function */
@@ -139,10 +141,14 @@ export class AgentRunner {
     const startTime = Date.now();
     
     try {
+      // Build CLI flags for tool permissions
+      const flags = this.buildCliFlags();
+
       const processResult = await this.spawner.spawn({
         prompt,
         cwd: this.config.workingDirectory,
         timeout: this.config.timeout,
+        flags,
         env: this.config.env,
       });
 
@@ -212,6 +218,23 @@ export class AgentRunner {
     }
 
     return results;
+  }
+
+  // ── CLI Flags ────────────────────────────────────────────
+
+  private buildCliFlags(): string[] {
+    const flags: string[] = [];
+
+    // Permission bypass — agent'lar sandbox'ta çalışır, tool'ları kullanabilmeli
+    flags.push('--dangerously-skip-permissions');
+
+    // Allowed tools — sadece dosya operasyonları ve bash
+    const tools = this.config.allowedTools ?? ['Read', 'Write', 'Edit', 'Bash'];
+    if (tools.length > 0) {
+      flags.push('--allowedTools', tools.join(','));
+    }
+
+    return flags;
   }
 
   // ── Agent Selection ─────────────────────────────────────

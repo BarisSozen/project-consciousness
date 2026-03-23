@@ -89,3 +89,36 @@
 - **Gerekçe**: stdin ignore → uyarı yok, daha temiz process lifecycle. --print tek başına yeterli.
 - **Alternatifler**: stdin pipe + explicit close (race condition riski), --verbose tutma (parse zorluğu)
 - **Durum**: active
+
+---
+
+## D009 — Real-world task: docs/GLOSSARY.md oluşturma
+
+- **Tarih**: 2026-03-23T21:39:02.621Z
+- **Bağlam**: Sistemin çalışma kanıtı olarak gerçek bir dosya üretim görevi verildi
+- **Karar**: Agent (documenter) başarısız şekilde çalıştı. Süre: 61ms
+- **Gerekçe**: E2E sonrası gerçek dünya testi — orchestrator döngüsünün tüm adımları çalışmalı
+- **Alternatifler**: Manuel dosya oluşturma (orchestrator kanıtı olmaz)
+- **Durum**: active
+
+---
+
+## D010 — Real-world task: docs/GLOSSARY.md oluşturma
+
+- **Tarih**: 2026-03-23T21:42:14.485Z
+- **Bağlam**: Sistemin çalışma kanıtı olarak gerçek bir dosya üretim görevi verildi
+- **Karar**: Agent (documenter) başarıyla çalıştı. Süre: 101236ms
+- **Gerekçe**: E2E sonrası gerçek dünya testi — orchestrator döngüsünün tüm adımları çalışmalı
+- **Alternatifler**: Manuel dosya oluşturma (orchestrator kanıtı olmaz)
+- **Durum**: active
+
+---
+
+## D011 — Real-world task: docs/GLOSSARY.md oluşturma
+
+- **Tarih**: 2026-03-23T21:47:48.098Z
+- **Bağlam**: Sistemin çalışma kanıtı olarak gerçek bir dosya üretim görevi verildi
+- **Karar**: Agent (documenter) başarıyla çalıştı. Süre: 96559ms
+- **Gerekçe**: E2E sonrası gerçek dünya testi — orchestrator döngüsünün tüm adımları çalışmalı
+- **Alternatifler**: Manuel dosya oluşturma (orchestrator kanıtı olmaz)
+- **Durum**: active

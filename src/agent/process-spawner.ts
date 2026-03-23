@@ -1,16 +1,15 @@
 /**
  * Process Spawner — Claude CLI Child Process Yönetimi
  * 
- * Claude Code binary'sini spawn eder, stdin'den prompt gönderir,
+ * Claude Code binary'sini spawn eder, prompt'u stdin pipe ile gönderir,
  * stdout/stderr toplar, timeout yönetir.
  * 
- * Karar D004: Agent'lar Claude Code ile çalışır (dosya sistemi erişimi gerekli).
+ * Karar D004: Agent'lar Claude Code ile çalışır.
+ * Karar D008: --print modu yeterli.
+ * Karar D009: Uzun prompt'lar stdin pipe ile gönderilir (Windows cmd limit).
  */
 
 import { spawn } from 'node:child_process';
-import { writeFile, unlink, mkdtemp } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 
 export interface SpawnOptions {
   /** Prompt to send to claude CLI */
@@ -35,6 +34,12 @@ export interface ProcessResult {
   timedOut: boolean;
 }
 
+/**
+ * Windows cmd.exe arg limit: ~8191 chars.
+ * Prompt'lar bu limiti aşınca stdin pipe veya temp dosya kullanılmalı.
+ */
+const WINDOWS_ARG_LIMIT = 7000; // safety margin
+
 export class ProcessSpawner {
   private defaultBinary: string;
   private defaultTimeout: number;
@@ -46,7 +51,7 @@ export class ProcessSpawner {
 
   /**
    * Claude CLI'ı --print modunda spawn et.
-   * --print: sadece text çıktı, interaktif UI yok.
+   * Kısa prompt → args ile, uzun prompt → stdin pipe ile.
    */
   async spawn(options: SpawnOptions): Promise<ProcessResult> {
     const {
@@ -59,34 +64,83 @@ export class ProcessSpawner {
     } = options;
 
     const startTime = Date.now();
+    const envVars = {
+      ...process.env,
+      ...env,
+      PC_AGENT_DEPTH: String(
+        parseInt(process.env['PC_AGENT_DEPTH'] ?? '0', 10) + 1
+      ),
+    };
 
-    // Uzun prompt'lar için temp dosya kullan
-    const promptFile = await this.writePromptFile(prompt);
-
-    try {
-      return await this.runProcess({
-        binary: binaryPath,
-        args: [
-          '--print',             // non-interactive, text-only output
-          ...flags,
-          prompt,
-        ],
-        cwd,
-        timeout,
-        env: {
-          ...process.env,
-          ...env,
-          // Agent'ın kendi subagent spawn etmesini engelle (sonsuz döngü koruması)
-          PC_AGENT_DEPTH: String(
-            parseInt(process.env['PC_AGENT_DEPTH'] ?? '0', 10) + 1
-          ),
-        },
-        startTime,
-      });
-    } finally {
-      // Temp dosyayı temizle
-      await this.cleanupPromptFile(promptFile);
+    // Uzun prompt: stdin pipe ile gönder
+    if (prompt.length > WINDOWS_ARG_LIMIT) {
+      return this.spawnWithStdin(binaryPath, prompt, flags, cwd, timeout, envVars, startTime);
     }
+
+    // Kısa prompt: args ile gönder
+    return this.runProcess({
+      binary: binaryPath,
+      args: ['--print', ...flags, prompt],
+      cwd,
+      timeout,
+      env: envVars,
+      startTime,
+      useStdin: false,
+    });
+  }
+
+  /**
+   * Uzun prompt'lar için: stdin pipe ile gönder.
+   * claude --print -p "read from stdin" < prompt
+   */
+  private spawnWithStdin(
+    binary: string,
+    prompt: string,
+    flags: string[],
+    cwd: string,
+    timeout: number,
+    env: Record<string, string>,
+    startTime: number,
+  ): Promise<ProcessResult> {
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+      let settled = false;
+
+      // stdin pipe açık, stdout/stderr pipe
+      const child = spawn(binary, ['--print', ...flags], {
+        cwd,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
+      });
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+        setTimeout(() => { if (!settled) child.kill('SIGKILL'); }, 5_000);
+      }, timeout);
+
+      child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        settled = true;
+        reject(new Error(`Failed to spawn ${binary}: ${error.message}`));
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        settled = true;
+        resolve({ exitCode: code ?? 1, stdout, stderr, duration: Date.now() - startTime, timedOut });
+      });
+
+      // Prompt'u stdin'e yaz ve kapat
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+    });
   }
 
   /**
@@ -101,6 +155,7 @@ export class ProcessSpawner {
         timeout: 10_000,
         env: process.env as Record<string, string>,
         startTime: Date.now(),
+        useStdin: false,
       });
 
       if (result.exitCode === 0) {
@@ -124,6 +179,7 @@ export class ProcessSpawner {
     timeout: number;
     env: Record<string, string>;
     startTime: number;
+    useStdin: boolean;
   }): Promise<ProcessResult> {
     return new Promise((resolve, reject) => {
       const { binary, args, cwd, timeout, env, startTime } = opts;
@@ -136,30 +192,18 @@ export class ProcessSpawner {
       const child = spawn(binary, args, {
         cwd,
         env,
-        stdio: ['ignore', 'pipe', 'pipe'],  // stdin ignore — prompt args ile gönderiliyor
-        // Windows uyumluluğu
+        stdio: ['ignore', 'pipe', 'pipe'],
         shell: process.platform === 'win32',
       });
 
-      // Timeout yönetimi
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');
-        // Grace period sonrası zorla öldür
-        setTimeout(() => {
-          if (!settled) {
-            child.kill('SIGKILL');
-          }
-        }, 5_000);
+        setTimeout(() => { if (!settled) child.kill('SIGKILL'); }, 5_000);
       }, timeout);
 
-      child.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      child.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
+      child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       child.on('error', (error) => {
         clearTimeout(timer);
@@ -170,33 +214,8 @@ export class ProcessSpawner {
       child.on('close', (code) => {
         clearTimeout(timer);
         settled = true;
-        resolve({
-          exitCode: code ?? 1,
-          stdout,
-          stderr,
-          duration: Date.now() - startTime,
-          timedOut,
-        });
+        resolve({ exitCode: code ?? 1, stdout, stderr, duration: Date.now() - startTime, timedOut });
       });
     });
-  }
-
-  private async writePromptFile(prompt: string): Promise<string | null> {
-    // 4KB altı prompt'lar için dosya gereksiz
-    if (prompt.length < 4096) return null;
-
-    const dir = await mkdtemp(join(tmpdir(), 'pc-prompt-'));
-    const filePath = join(dir, 'prompt.md');
-    await writeFile(filePath, prompt, 'utf-8');
-    return filePath;
-  }
-
-  private async cleanupPromptFile(filePath: string | null): Promise<void> {
-    if (!filePath) return;
-    try {
-      await unlink(filePath);
-    } catch {
-      // Best effort cleanup
-    }
   }
 }
