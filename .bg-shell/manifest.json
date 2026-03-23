@@ -1,16 +1,1 @@
-[
-  {
-    "id": "c4b73721",
-    "label": "git-gorev12",
-    "command": "git add -A && git commit -m \"feat: BriefCollector + Evaluator v2 — SCOPE/ANTI-SCOPE & real stack checks\n\nGÖREV 1 — BriefCollector (src/brief/brief-collector.ts):\n- İnteraktif CLI ile SCOPE toplama (ne inşa edilecek, stack, başarı kriterleri)\n- ANTI-SCOPE toplama (korunan dosyalar, kilitli kararlar, yasaklı dep'ler, kırılmalar)\n- Programmatic create() API (test/CI kullanımı)\n- MISSION.md'ye yazma (mevcut içerik korunur, SCOPE/ANTI-SCOPE eklenir/güncellenir)\n- parseAntiScope() — MISSION.md'den anti-scope parse (Evaluator tarafından kullanılır)\n- parseStackType() — MISSION.md'den stack tespiti\n- 9 test passing\n\nGÖREV 2 — Evaluator v2 (src/orchestrator/evaluator.ts):\n- Stack tespiti: MISSION.md'den explicit veya dosya tabanlı otomatik\n  (tsconfig.json→TS, package.json+react→React, requirements.txt→Python, go.mod→Go)\n- Stack-aware gerçek kontroller:\n  TypeScript: tsc --noEmit, npm test, eslint\n  React: tsc, npm test, npm run build, eslint\n  Python: pytest, mypy, flake8\n  Go: go build, go test, go vet\n- Anti-scope kontrolü: korunan dosya dokunma→FAIL, yasaklı dep import→FAIL\n- Hafıza dosyası varlık kontrolü (her stack için)\n- Skor hesaplama: quality (check pass rate), mission (violation penalty), consistency (memory files)\n- LLM değerlendirmesi opsiyonel (API key yoksa sadece gerçek kontroller)\n- RealEvaluationResult: checks[], antiScopeViolations[], stackDetected\n- 12 test passing\n\nKararlar: D012 (SCOPE/ANTI-SCOPE yapısı), D013 (gerçek kontroller + anti-scope)\nProcessSpawner: flags varken stdin pipe kullan (Claude CLI uyumluluğu)\nTypes: Brief, BriefScope, BriefAntiScope, StackType, CheckResult, AntiScopeViolation, RealEvaluationResult\nTests: 57/57 unit passing, TypeScript strict 0 error\" 2>&1",
-    "cwd": "C:\\Users\\Baris\\project-consciousness",
-    "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
-    "persistAcrossSessions": false,
-    "startedAt": 1774303579729,
-    "processType": "generic",
-    "group": null,
-    "readyPattern": null,
-    "readyPort": null,
-    "pid": 74824
-  }
-]
+[]

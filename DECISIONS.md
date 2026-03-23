@@ -144,3 +144,14 @@
 - **Gerekçe**: Gerçek kontroller yalan söyleyemez. Anti-scope kritik ihlaller için otomatik FAIL.
 - **Alternatifler**: Sadece LLM değerlendirme (hallucination riski), sadece dosya kontrolü (kalite ölçülmez)
 - **Durum**: active
+
+---
+
+## D014 — Calculator entegrasyon testi — Evaluator v2
+
+- **Tarih**: 2026-03-23T22:13:10.546Z
+- **Bağlam**: Brief→Agent→Calculator→Evaluator tam döngü testi
+- **Karar**: Verdict: escalate. Quality: 33%. Checks: 5/7. Anti-scope: 0 ihlal.
+- **Gerekçe**: Sistemin gerçek bir kod üretim + değerlendirme döngüsünü kanıtlaması
+- **Alternatifler**: Manuel test (otomasyon kanıtı olmaz)
+- **Durum**: active

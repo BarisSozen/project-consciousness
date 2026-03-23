@@ -37,3 +37,41 @@ Claude Code + GSD-2 ile çalışıyor.
 - Karmaşık altyapı yok (DB, message queue, vb.)
 - GSD-2'yi replace etmiyor, üstüne oturuyor
 - Paperclip kadar ağır bir sistem değil
+
+## SCOPE
+
+**Ne inşa ediyoruz**: Basit bir Node.js CLI hesap makinesi
+
+**Stack**: TypeScript + Node.js
+
+**Başarı Kriterleri**:
+- npm test geçmeli
+- Toplama çalışmalı
+- Çıkarma çalışmalı
+- Çarpma çalışmalı
+- Bölme çalışmalı
+
+## ANTI-SCOPE
+
+**Dokunulmaz dosyalar**:
+- `MISSION.md`
+- `ARCHITECTURE.md`
+
+**Kilitli kararlar**:
+- D001 Dosya tabanlı hafıza sistemi
+
+**Yasaklı bağımlılıklar**:
+- `lodash`
+
+**Kabul edilemez kırılmalar**:
+- Mevcut testler kırılmasın
+
+## SUCCESS CRITERIA
+
+1. npm test geçmeli
+2. Toplama çalışmalı
+3. Çıkarma çalışmalı
+4. Çarpma çalışmalı
+5. Bölme çalışmalı
+
+> Brief toplama tarihi: 2026-03-23T22:10:30.022Z
