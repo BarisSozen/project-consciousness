@@ -180,7 +180,8 @@ describe('Evaluator v2', () => {
 
   describe('runStackChecks', () => {
     it('should run memory file existence checks for any stack', async () => {
-      // Create memory files
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+      await mkdir(TEST_DIR, { recursive: true });
       await writeFile(join(TEST_DIR, 'MISSION.md'), '# MISSION');
       await writeFile(join(TEST_DIR, 'ARCHITECTURE.md'), '# ARCH');
       await writeFile(join(TEST_DIR, 'DECISIONS.md'), '# DEC');
@@ -194,10 +195,39 @@ describe('Evaluator v2', () => {
     });
 
     it('should fail file check when file missing', async () => {
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+      await mkdir(TEST_DIR, { recursive: true });
       const checks = await evaluator.runStackChecks('other');
       const missionCheck = checks.find(c => c.name === 'File: MISSION.md');
-      // May or may not exist depending on test order
       expect(missionCheck).toBeDefined();
+      expect(missionCheck!.passed).toBe(false);
+    });
+
+    it('should skip lint when config is missing', async () => {
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+      await mkdir(TEST_DIR, { recursive: true });
+      await writeFile(join(TEST_DIR, 'tsconfig.json'), '{}');
+      // No eslint config
+
+      const checks = await evaluator.runStackChecks('typescript-node');
+      const lintCheck = checks.find(c => c.name === 'Lint');
+      expect(lintCheck).toBeDefined();
+      expect(lintCheck!.passed).toBe(true); // SKIP = pass
+      expect(lintCheck!.output).toContain('SKIPPED');
+    });
+
+    it('should scope tests to agent artifacts', async () => {
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+      await mkdir(TEST_DIR, { recursive: true });
+
+      const checks = await evaluator.runStackChecks(
+        'typescript-node',
+        ['tests/calculator.test.ts']
+      );
+      const testCheck = checks.find(c => c.name === 'Unit tests');
+      expect(testCheck).toBeDefined();
+      // Command should include specific test file
+      expect(testCheck!.command).toContain('calculator.test.ts');
     });
   });
 

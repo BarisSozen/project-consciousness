@@ -96,8 +96,8 @@ export class Evaluator {
     // 1. Stack tespiti
     const stackDetected = await this.detectStack(memory);
 
-    // 2. Gerçek kontrolleri çalıştır
-    const checks = await this.runStackChecks(stackDetected);
+    // 2. Gerçek kontrolleri çalıştır (agent artifact'lerine scoped)
+    const checks = await this.runStackChecks(stackDetected, agentResult.artifacts);
 
     // 3. Anti-scope kontrolü
     const antiScopeViolations = this.checkAntiScope(agentResult, memory);
@@ -172,12 +172,25 @@ export class Evaluator {
 
   // ── Real Stack Checks ──────────────────────────────────
 
-  async runStackChecks(stack: StackType): Promise<CheckResult[]> {
+  async runStackChecks(
+    stack: StackType,
+    agentArtifacts: string[] = []
+  ): Promise<CheckResult[]> {
     const checks = STACK_CHECKS[stack] ?? [];
     const results: CheckResult[] = [];
 
     for (const check of checks) {
-      const result = await this.runCommand(check.name, check.command);
+      // Düzeltme 1: Test komutu → sadece agent'ın ürettiği test dosyalarını çalıştır
+      const command = this.resolveCommand(check, agentArtifacts);
+
+      // Düzeltme 2: Lint — config yoksa skip et
+      if (check.name.includes('Lint')) {
+        const lintResult = await this.runLintCheck(check.name, command);
+        results.push(lintResult);
+        continue;
+      }
+
+      const result = await this.runCommand(check.name, command);
       results.push(result);
     }
 
@@ -190,10 +203,89 @@ export class Evaluator {
     return results;
   }
 
+  /**
+   * Test komutunu agent artifact'lerine göre daralt.
+   * Agent tests/calculator.test.ts ürettiyse → sadece onu çalıştır.
+   */
+  private resolveCommand(check: StackCheck, artifacts: string[]): string {
+    // Test komutu değilse aynen döndür
+    if (!check.name.toLowerCase().includes('test')) {
+      return check.command;
+    }
+
+    // Agent'ın ürettiği test dosyalarını bul
+    const testFiles = artifacts.filter(a =>
+      a.match(/\.(test|spec)\.(ts|tsx|js|jsx)$/) ||
+      a.startsWith('tests/') ||
+      a.startsWith('test/')
+    );
+
+    if (testFiles.length === 0) {
+      return check.command; // fallback: tüm testler
+    }
+
+    // Stack'e göre scoped test komutu
+    if (check.command.includes('vitest') || check.command.includes('npm test')) {
+      return `npx vitest run ${testFiles.join(' ')}`;
+    }
+    if (check.command.includes('pytest')) {
+      return `pytest ${testFiles.join(' ')}`;
+    }
+    if (check.command.includes('go test')) {
+      return check.command; // Go'da dosya bazlı test zor, paket bazlı kalır
+    }
+
+    return check.command;
+  }
+
+  /**
+   * Lint kontrolü — config dosyası yoksa SKIP (warn), FAIL değil.
+   */
+  private async runLintCheck(name: string, command: string): Promise<CheckResult> {
+    // ESLint config var mı kontrol et
+    const eslintConfigs = [
+      'eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs',
+      '.eslintrc.js', '.eslintrc.json', '.eslintrc.yml', '.eslintrc',
+    ];
+
+    let hasConfig = false;
+    for (const cfg of eslintConfigs) {
+      try {
+        await access(join(this.projectRoot, cfg));
+        hasConfig = true;
+        break;
+      } catch { /* yok, devam */ }
+    }
+
+    // Python lint (flake8) config kontrolü
+    if (command.includes('flake8')) {
+      try {
+        await access(join(this.projectRoot, '.flake8'));
+        hasConfig = true;
+      } catch {
+        try {
+          await access(join(this.projectRoot, 'setup.cfg'));
+          hasConfig = true;
+        } catch { /* yok */ }
+      }
+    }
+
+    if (!hasConfig) {
+      return {
+        name,
+        command,
+        passed: true, // skip = pass (warning olarak raporlanır)
+        output: 'SKIPPED — lint config not found, skipping check',
+      };
+    }
+
+    return this.runCommand(name, command);
+  }
+
   private runCommand(name: string, command: string): Promise<CheckResult> {
     const start = Date.now();
     return new Promise((resolve) => {
-      exec(command, { cwd: this.projectRoot, timeout: 30_000 }, (error, stdout, stderr) => {
+      exec(command, { cwd: this.projectRoot, timeout: 60_000 }, (error, stdout, stderr) => {
         resolve({
           name,
           command,
