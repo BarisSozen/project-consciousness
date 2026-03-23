@@ -1,16 +1,16 @@
 [
   {
-    "id": "05d47e7f",
-    "label": "commit-push",
-    "command": "git add -A && git commit -m \"feat: ArchitectAgent + MilestoneManager + DependencyGraph + CrashRecovery\n\nGÖREV 1 — ArchitectAgent (src/agent/architect.ts):\n  5 interaktif mimari soru: auth, database, API, frontend, deployment\n  runInteractive(): CLI readline\n  runWithDefaults(): test/CI injection\n  writeToArchitecture(): ARCHITECTURE.md'ye Kararlar bölümü\n  parseDecisions(): ARCHITECTURE.md'den parse\n  Seçenekler: JWT/Session/OAuth/APIKey, PG/Mongo/SQLite/InMem,\n              REST/GraphQL/tRPC, React/Vue/Next/API-only, Local/Docker/Cloud\n\nGÖREV 2 — MilestoneManager (src/orchestrator/milestone-manager.ts):\n  createMilestones(brief, arch) → MilestonePlan\n  Otomatik milestone zinciri:\n    M01: Foundation (config, DB schema)\n    M02: Auth (eğer auth != none)\n    M03: API (endpoints, tests)\n    M04: Frontend (eğer frontend != api-only)\n    M05: Integration (E2E)\n  dependsOn ile sıralama\n  getNextMilestone(): bağımlılıkları tamamlanmış ilk pending\n  renderMilestoneState(): STATE.md için\n\nGÖREV 3 — DependencyGraph (src/orchestrator/dependency-graph.ts):\n  Kahn's algorithm topological sort\n  getExecutionOrder(): [[T1,T2], [T3], [T4,T5]] paralel gruplar\n  hasCycle(): DFS-based cycle detection\n  getReadyTasks(completed): dinamik paralel gruplama\n  getDependencies/getDependents: edge queries\n\nGÖREV 5 — RecoveryManager (src/orchestrator/recovery.ts):\n  .pc-checkpoint.json: sessionId, milestoneId, completed tasks/milestones\n  saveCheckpoint/loadCheckpoint/canResume/clearCheckpoint\n  promptResume(): kullanıcıya devam sor (test injection)\n  getResumePoint(): kaldığı milestone + completed tasks\n\nGÖREV 6 — Integration Test:\n  Blog API pipeline: architect(JWT,PG,REST) → milestones(4+) → \n  dependency graph(no cycle) → milestone execution sim →\n  crash recovery(save/load/resume/clear)\n\nTypes: ArchitectureDecisions, Milestone, MilestonePlan, Checkpoint,\n       AuthStrategy, DatabaseChoice, ApiStyle, FrontendChoice, DeployTarget\n\nKararlar: D020 (architect), D021 (milestone), D022 (dep graph), D023 (recovery)\nTests: 24 new (8 dep-graph + 16 milestone-integration)\nTotal: 144/144 passing, 15 suites, TypeScript strict 0 error\" && git.exe push origin master 2>&1",
+    "id": "d51b86dc",
+    "label": "project-shell",
+    "command": "bash",
     "cwd": "C:\\Users\\Baris\\project-consciousness",
-    "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
+    "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T23-30-07-812Z_9b33c16e-2045-405b-989e-4da427f2c27e.jsonl",
     "persistAcrossSessions": false,
-    "startedAt": 1774308164291,
-    "processType": "generic",
+    "startedAt": 1774308730197,
+    "processType": "shell",
     "group": null,
     "readyPattern": null,
     "readyPort": null,
-    "pid": 1772
+    "pid": 112872
   }
 ]

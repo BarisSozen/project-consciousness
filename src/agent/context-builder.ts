@@ -10,8 +10,10 @@
 import type { 
   TaskDefinition, 
   MemorySnapshot,
-  AgentConfig 
+  AgentConfig,
+  CodebaseContext,
 } from '../types/index.js';
+import { CodebaseReader } from './codebase-reader.js';
 
 /** Agent tipine göre system-level talimatlar */
 const AGENT_PERSONAS: Record<string, string> = {
@@ -51,19 +53,38 @@ KURALLAR:
 };
 
 export class ContextBuilder {
+  private codebaseReader: CodebaseReader;
+
+  constructor() {
+    this.codebaseReader = new CodebaseReader();
+  }
+
   /**
    * Agent için tam prompt oluştur.
-   * Yapı: Persona + Memory Context + Task Detail + Output Format
+   * Yapı: Persona + Memory Context + Codebase Context + Task Detail + Output Format
    */
   buildPrompt(
     task: TaskDefinition,
     memory: MemorySnapshot,
-    agent: AgentConfig
+    agent: AgentConfig,
+    codebaseContext?: CodebaseContext
   ): string {
     const persona = AGENT_PERSONAS[agent.type] ?? AGENT_PERSONAS['coder']!;
     const memoryContext = this.buildMemoryContext(memory);
     const taskDetail = this.buildTaskDetail(task);
     const outputFormat = this.buildOutputFormat(task);
+
+    let codebaseSection = '';
+    if (codebaseContext && codebaseContext.files.length > 0) {
+      codebaseSection = `
+═══════════════════════════════════════════════════
+MEVCUT CODEBASE
+═══════════════════════════════════════════════════
+
+${codebaseContext.summary}
+${codebaseContext.truncated ? '\n⚠️ Token limiti nedeniyle bazı dosyalar kırpıldı.' : ''}
+`;
+    }
 
     return `${persona}
 
@@ -72,7 +93,7 @@ PROJE HAFIZASI — Bu bağlam her şeyin üstündedir
 ═══════════════════════════════════════════════════
 
 ${memoryContext}
-
+${codebaseSection}
 ═══════════════════════════════════════════════════
 GÖREV
 ═══════════════════════════════════════════════════
@@ -85,6 +106,24 @@ ${taskDetail}
 
 ${outputFormat}
 `;
+  }
+
+  /**
+   * Codebase context oluştur — task'a göre ilgili dosyaları bul ve özetle.
+   * AgentRunner veya Orchestrator tarafından çağrılır, sonuç buildPrompt'a geçirilir.
+   */
+  async buildCodebaseContext(
+    projectRoot: string,
+    taskDescription: string,
+    architecture?: string
+  ): Promise<CodebaseContext> {
+    const structure = await this.codebaseReader.scanProject(projectRoot);
+    const relevantFiles = this.codebaseReader.getRelevantFiles(
+      taskDescription,
+      structure,
+      architecture
+    );
+    return this.codebaseReader.buildContextSummary(relevantFiles, projectRoot);
   }
 
   /**

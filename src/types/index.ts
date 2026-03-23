@@ -231,6 +231,7 @@ export interface RealEvaluationResult extends EvaluationResult {
   checks: CheckResult[];
   antiScopeViolations: AntiScopeViolation[];
   stackDetected: StackType;
+  integrationTests?: IntegrationTestResult;
 }
 
 // ============================================================
@@ -285,4 +286,70 @@ export interface Checkpoint {
   completedMilestones: string[];
   completedTasks: string[];
   timestamp: string;
+}
+
+// ============================================================
+// Codebase Reader Types
+// ============================================================
+
+export interface FileInfo {
+  path: string;
+  relativePath: string;
+  size: number;
+  extension: string;
+}
+
+export interface ProjectStructure {
+  root: string;
+  files: FileInfo[];
+  directories: string[];
+  totalFiles: number;
+  totalSize: number;
+}
+
+export interface FileContext {
+  path: string;
+  firstLines: string;
+  exports: string[];
+  relevanceScore: number;
+}
+
+export interface CodebaseContext {
+  files: FileContext[];
+  totalTokens: number;
+  truncated: boolean;
+  summary: string;
+}
+
+// ============================================================
+// Integration Evaluator Types
+// ============================================================
+
+export interface EndpointTest {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  path: string;
+  body?: Record<string, unknown>;
+  headers?: Record<string, string>;
+  expectedStatus?: number;
+  expectedBody?: Record<string, unknown>;
+  description: string;
+}
+
+export interface EndpointTestResult {
+  test: EndpointTest;
+  passed: boolean;
+  actualStatus?: number;
+  actualBody?: unknown;
+  error?: string;
+  duration: number;
+}
+
+export interface IntegrationTestResult {
+  serverStarted: boolean;
+  serverStartTime: number;
+  endpointResults: EndpointTestResult[];
+  passed: number;
+  failed: number;
+  total: number;
+  summary: string;
 }

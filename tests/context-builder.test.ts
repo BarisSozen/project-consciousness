@@ -2,9 +2,14 @@
  * Context Builder Tests
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { ContextBuilder } from '../src/agent/context-builder.js';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { TaskDefinition, MemorySnapshot, AgentConfig } from '../src/types/index.js';
+
+const TEST_DIR = join(tmpdir(), `pc-ctx-builder-${Date.now()}`);
 
 const mockMemory: MemorySnapshot = {
   files: {
@@ -128,4 +133,109 @@ describe('ContextBuilder', () => {
     // Mission should still be fully included
     expect(context).toContain(largeMission);
   });
+
+  // ── Codebase Context entegrasyonu ─────────────────────
+
+  it('should include codebase context in prompt when provided', () => {
+    const codebaseContext = {
+      files: [
+        {
+          path: 'src/auth/auth-service.ts',
+          firstLines: 'export class AuthService { ... }',
+          exports: ['AuthService', 'hashPassword'],
+          relevanceScore: 10,
+        },
+      ],
+      totalTokens: 500,
+      truncated: false,
+      summary: '### src/auth/auth-service.ts\nExports: AuthService, hashPassword\n```\nexport class AuthService { ... }\n```',
+    };
+
+    const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, codebaseContext);
+
+    expect(prompt).toContain('MEVCUT CODEBASE');
+    expect(prompt).toContain('AuthService');
+    expect(prompt).toContain('auth-service.ts');
+  });
+
+  it('should not include codebase section when no context', () => {
+    const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent);
+    expect(prompt).not.toContain('MEVCUT CODEBASE');
+  });
+
+  it('should not include codebase section when empty files', () => {
+    const emptyContext = {
+      files: [],
+      totalTokens: 0,
+      truncated: false,
+      summary: '',
+    };
+    const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, emptyContext);
+    expect(prompt).not.toContain('MEVCUT CODEBASE');
+  });
+
+  it('should show truncation warning when codebase is truncated', () => {
+    const truncatedContext = {
+      files: [
+        {
+          path: 'src/index.ts',
+          firstLines: 'export const x = 1;',
+          exports: ['x'],
+          relevanceScore: 1,
+        },
+      ],
+      totalTokens: 8000,
+      truncated: true,
+      summary: '### src/index.ts\n```\nexport const x = 1;\n```',
+    };
+
+    const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, truncatedContext);
+
+    expect(prompt).toContain('MEVCUT CODEBASE');
+    expect(prompt).toContain('Token limiti nedeniyle');
+  });
+
+  // ── buildCodebaseContext ────────────────────────────
+
+  describe('buildCodebaseContext', () => {
+    beforeEach(async () => {
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+      await mkdir(join(TEST_DIR, 'src', 'auth'), { recursive: true });
+      await writeFile(
+        join(TEST_DIR, 'src', 'auth', 'service.ts'),
+        'export class AuthService {\n  login() {}\n  register() {}\n}\n'
+      );
+      await writeFile(
+        join(TEST_DIR, 'src', 'index.ts'),
+        'export { AuthService } from "./auth/service.js";\n'
+      );
+    });
+
+    afterAll(async () => {
+      await rm(TEST_DIR, { recursive: true, force: true }).catch(() => {});
+    });
+
+    it('should build codebase context for auth task', async () => {
+      const context = await builder.buildCodebaseContext(
+        TEST_DIR,
+        'auth endpoint yaz'
+      );
+
+      expect(context.files.length).toBeGreaterThan(0);
+      expect(context.totalTokens).toBeGreaterThan(0);
+      expect(context.totalTokens).toBeLessThanOrEqual(8000);
+    });
+
+    it('should use architecture for better relevance', async () => {
+      const context = await builder.buildCodebaseContext(
+        TEST_DIR,
+        'service güncelle',
+        '## Auth Layer\nsrc/auth/ altında auth servisi bulunur.'
+      );
+
+      const paths = context.files.map(f => f.path);
+      expect(paths.some(p => p.includes('auth'))).toBe(true);
+    });
+  });
 });
+

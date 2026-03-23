@@ -254,3 +254,25 @@
 - **Gerekçe**: Fail-Safe ilkesi. Büyük projeler saatlerce sürebilir, her şeyi baştan başlatmak kabul edilemez.
 - **Alternatifler**: STATE.md'den recovery (daha az granüler), session DB (karmaşık)
 - **Durum**: active
+
+---
+
+## D024 — Codebase Context: Task Öncesi Otomatik Dosya Okuma
+
+- **Tarih**: 2026-03-24T02:30:00+03:00
+- **Bağlam**: Agent'lar göreve başladığında mevcut kodları bilmiyor, sıfırdan yazıyor (D007 memory injection sadece hafıza dosyalarını veriyor, codebase'i vermiyor)
+- **Karar**: CodebaseReader: scanProject() ile src/ tara, getRelevantFiles(task, architecture) ile ilgili dosyaları seç, buildContextSummary() ile özet oluştur. ContextBuilder.buildPrompt()'a "## Mevcut Codebase" bölümü eklendi. Max 8000 token. Task pattern matching: auth→auth dosyaları, frontend→API+types, test→implementation dosyaları.
+- **Gerekçe**: Agent göreve başlamadan önce mevcut kodun ne olduğunu bilmeli. Yoksa duplicate kod yazar, var olan modülleri yeniden implement eder. Memory-First ilkesi genişletildi: kod da hafıza.
+- **Alternatifler**: Her agent'a tüm kodu gönder (token bütçesi aşılır), RAG ile retrieval (karmaşık + latency), sadece import graph analizi (yüzeysel)
+- **Durum**: active
+
+---
+
+## D025 — Integration Evaluator: HTTP Endpoint Testi
+
+- **Tarih**: 2026-03-24T02:30:00+03:00
+- **Bağlam**: Evaluator v2 (D013) sadece tsc/npm test çalıştırıyor, gerçek HTTP endpoint'lerin çalışıp çalışmadığını test etmiyor
+- **Karar**: IntegrationEvaluator: startServer() ile server başlat, waitForReady() ile hazır bekle, testEndpoint() ile HTTP istek at. Task'tan otomatik test senaryosu çıkarma: auth→register+login, todo→CRUD, genel→root+health. Timeout: 30s server, 10s request. Server başlamazsa WARN (FAIL değil). Sonuç RealEvaluationResult.integrationTests'e eklenir.
+- **Gerekçe**: "npm test geçiyor" ≠ "endpoint çalışıyor". Gerçek HTTP isteği yalan söyleyemez. Evaluator v2'nin doğal uzantısı.
+- **Alternatifler**: Supertest (dependency), sadece port check (shallow), curl ile test (parse zor)
+- **Durum**: active
