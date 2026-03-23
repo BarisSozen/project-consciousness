@@ -78,3 +78,14 @@
 - **Gerekçe**: Agent her çağrıda tam bağlama sahip olur, hafıza kaybı imkansız. Compact mod token bütçesini korur.
 - **Alternatifler**: Sadece ilgili bölümleri göndermek (bağlam kaybı riski), RAG tabanlı retrieval (karmaşıklık)
 - **Durum**: active
+
+---
+
+## D008 — E2E: stdin ignore + --print modu yeterli
+
+- **Tarih**: 2026-03-24T00:31:00+03:00
+- **Bağlam**: claude CLI stdin bekleme uyarısı ve --verbose flag sorunları (T004 E2E)
+- **Karar**: stdio stdin'i `ignore` olarak ayarla, prompt tamamen args üzerinden gönderilir. --verbose kaldırıldı (gereksiz, çıktıyı kirletiyor).
+- **Gerekçe**: stdin ignore → uyarı yok, daha temiz process lifecycle. --print tek başına yeterli.
+- **Alternatifler**: stdin pipe + explicit close (race condition riski), --verbose tutma (parse zorluğu)
+- **Durum**: active

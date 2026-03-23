@@ -68,7 +68,6 @@ export class ProcessSpawner {
         binary: binaryPath,
         args: [
           '--print',             // non-interactive, text-only output
-          '--verbose',           // include reasoning
           ...flags,
           prompt,
         ],
@@ -137,7 +136,7 @@ export class ProcessSpawner {
       const child = spawn(binary, args, {
         cwd,
         env,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],  // stdin ignore — prompt args ile gönderiliyor
         // Windows uyumluluğu
         shell: process.platform === 'win32',
       });
@@ -179,9 +178,6 @@ export class ProcessSpawner {
           timedOut,
         });
       });
-
-      // stdin'i kapat (prompt args ile gönderildi)
-      child.stdin?.end();
     });
   }
 
