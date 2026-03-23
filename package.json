@@ -1,0 +1,38 @@
+{
+  "name": "project-consciousness",
+  "version": "0.1.0",
+  "description": "Multi-agent orchestration with persistent memory — agents never forget why they exist",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "orchestrate": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  },
+  "keywords": ["ai", "multi-agent", "orchestration", "memory", "claude"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "zod": "^3.24.0",
+    "gray-matter": "^4.0.3",
+    "chalk": "^5.4.0",
+    "ora": "^8.1.0",
+    "date-fns": "^4.1.0"
+  }
+}
