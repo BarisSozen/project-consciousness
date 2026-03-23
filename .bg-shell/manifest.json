@@ -1,16 +1,16 @@
 [
   {
-    "id": "5b693930",
-    "label": "git-todo",
-    "command": "git add -A && git commit -m \"feat(T-TODO-001): TODO REST API — agent-generated express server + tests\n\nAgent (coder) 176s'de tam bir TODO REST API üretti:\n\nsrc/todo/server.ts — Express server (createApp factory):\n  GET /todos     → in-memory list döndürür\n  POST /todos    → { title } ile yeni todo, auto-increment id, 201\n  DELETE /:id    → siler veya 404\n\nsrc/todo/index.ts — barrel export\ntests/todo.test.ts — 6 supertest testi, tümü geçiyor\n\nEvaluator v2 sonuçları:\n  ✅ Unit tests: tests/todo.test.ts — 6/6 (scoped execution)\n  ✅ Lint: SKIPPED (no config)\n  ✅ Anti-scope: temiz (MISSION.md dokunulmadı, express kullanıldı)\n  ✅ Memory files: 4/4\n  ✅ Consistency: 100%\n  ✅ Mission: 100%\n  ❌ tsc: runner dosyasında unused import (düzeltildi)\n  Verdict: revise → tsc fix sonrası accept olur\n\nAgent ayrıca express + supertest dependency'lerini ekledi.\nToplam test: 102+ passing\nKarar: D016\" 2>&1",
+    "id": "f9dd9854",
+    "label": "git-push",
+    "command": "git add -A && git commit -m \"feat: README.md + memory optimization (summarize decisions, compress state)\n\nGÖREV 1 — README.md:\n- What/why/how with ASCII flow diagram\n- GSD-2 vs Paperclip comparison table\n- Quick start (install, API key, run)\n- BriefCollector programmatic usage example\n- Memory files table (who writes, how often)\n- Project structure tree\n- Evaluator real checks table (TS/React/Python/Go)\n- Contributing guidelines + design principles\n- MIT license\n\nGÖREV 2 — Memory Optimization:\n- summarizeDecisions(raw, recentCount=10):\n  Son 10 karar tam, eskiler tek satır özet\n  Gruplar: D001-D005: title1, title2, ...\n- compressState(raw, maxCompleted=5):\n  Son 5 completed task tam, geri kalanı '12 task tamamlandı' özeti\n  Active + blocked tam kalır\n- optimizedSnapshot(recentDecisions, maxCompleted):\n  Mission + Architecture tam, Decisions + State optimized\n- Orchestrator artık optimizedSnapshot() kullanıyor\n- ContextBuilder buildMemoryContext() dokümantasyonu güncellendi\n\nPerformance: 50 karar + 30 task → 11138 → 3473 chars (68.8% azalma)\n\nKararlar: D017 (README), D018 (hafıza optimizasyonu)\nTests: 8 yeni (summarize, compress, optimizedSnapshot, size reduction)\nTypeScript: strict, 0 error\" && git push 2>&1",
     "cwd": "C:\\Users\\Baris\\project-consciousness",
     "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
     "persistAcrossSessions": false,
-    "startedAt": 1774305091443,
+    "startedAt": 1774305802391,
     "processType": "generic",
     "group": null,
     "readyPattern": null,
     "readyPort": null,
-    "pid": 117672
+    "pid": 132112
   }
 ]

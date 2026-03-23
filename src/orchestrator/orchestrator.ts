@@ -59,8 +59,8 @@ export class Orchestrator {
     await this.validateMemory();
 
     // 2. Hafıza snapshot'ı al
-    const memory = await this.memory.snapshot();
-    this.log(`📸 Hafıza snapshot alındı (hash: ${memory.hash})`);
+    const memory = await this.memory.optimizedSnapshot();
+    this.log(`📸 Hafıza snapshot alındı (hash: ${memory.hash}, optimized)`);
 
     // 3. Plan oluştur
     this.log('📋 Plan oluşturuluyor...');
@@ -164,9 +164,9 @@ export class Orchestrator {
       };
     }
 
-    // Güncel memory snapshot al (her task öncesi)
-    const memory = await this.memory.snapshot();
-    this.log(`  📸 Memory snapshot (hash: ${memory.hash})`);
+    // Güncel memory snapshot al (her task öncesi, optimized)
+    const memory = await this.memory.optimizedSnapshot();
+    this.log(`  📸 Memory snapshot (hash: ${memory.hash}, optimized)`);
 
     // Agent runner ile çalıştır
     const result = await this.agentRunner.runTask(task, memory);

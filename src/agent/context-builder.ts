@@ -88,8 +88,9 @@ ${outputFormat}
   }
 
   /**
-   * Hafıza bağlamını kompakt formatta oluştur.
-   * Çok uzun hafızalar için özet versiyonu kullan.
+   * Hafıza bağlamını oluştur.
+   * Otomatik: 20K altı → tam, üstü → compact.
+   * MemoryLayer.optimizedSnapshot() ile geliyorsa zaten sıkıştırılmış.
    */
   buildMemoryContext(memory: MemorySnapshot): string {
     const sections = [

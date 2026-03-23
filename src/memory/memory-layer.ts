@@ -44,6 +44,35 @@ export class MemoryLayer {
     };
   }
 
+  /**
+   * Optimize edilmiş snapshot — context window'u korumak için
+   * DECISIONS.md ve STATE.md otomatik sıkıştırılır.
+   * 
+   * @param recentDecisionCount Tam gösterilecek son karar sayısı (default: 10)
+   * @param maxCompletedTasks Tam gösterilecek max tamamlanan task (default: 5)
+   */
+  async optimizedSnapshot(
+    recentDecisionCount = 10,
+    maxCompletedTasks = 5
+  ): Promise<MemorySnapshot> {
+    const [mission, architecture, decisionsRaw, stateRaw] = await Promise.all([
+      this.readFile('mission'),
+      this.readFile('architecture'),
+      this.readFile('decisions'),
+      this.readFile('state'),
+    ]);
+
+    const decisions = this.summarizeDecisions(decisionsRaw, recentDecisionCount);
+    const state = this.compressState(stateRaw, maxCompletedTasks);
+
+    const files: MemoryFiles = { mission, architecture, decisions, state };
+    return {
+      files,
+      timestamp: new Date().toISOString(),
+      hash: this.computeHash(files),
+    };
+  }
+
   async readAll(): Promise<MemoryFiles> {
     const [mission, architecture, decisions, state] = await Promise.all([
       this.readFile('mission'),
@@ -126,6 +155,109 @@ export class MemoryLayer {
   async getNextDecisionId(): Promise<string> {
     const count = await this.getDecisionCount();
     return `D${String(count + 1).padStart(3, '0')}`;
+  }
+
+  // ── Memory Optimization ─────────────────────────────────
+
+  /**
+   * DECISIONS.md özetleme:
+   * - Son N karar tam gösterilir
+   * - Eskiler tek satır özete indirilir
+   * 
+   * Örnek: "D001-D006: dosya tabanlı hafıza, TypeScript stack, Claude API kararları"
+   */
+  summarizeDecisions(raw: string, recentCount = 10): string {
+    // Header'ı ayır
+    const headerMatch = raw.match(/^([\s\S]*?)(?=\n---\n|\n## D\d)/);
+    const header = headerMatch?.[1]?.trim() ?? '# DECISIONS';
+
+    // Kararları parse et
+    const decisionBlocks = raw.split(/(?=\n---\n\s*\n## D\d)/).filter(b => /## D\d/.test(b));
+
+    if (decisionBlocks.length <= recentCount) {
+      return raw; // sıkıştırma gereksiz
+    }
+
+    const oldCount = decisionBlocks.length - recentCount;
+    const oldBlocks = decisionBlocks.slice(0, oldCount);
+    const recentBlocks = decisionBlocks.slice(oldCount);
+
+    // Eski kararları özetle
+    const oldSummaries = oldBlocks.map(block => {
+      const idMatch = block.match(/## (D\d+)\s*—\s*(.+)/);
+      const id = idMatch?.[1] ?? '?';
+      const title = idMatch?.[2]?.trim() ?? 'untitled';
+      return `${id}: ${title}`;
+    });
+
+    // Grup halinde özetle (max 5 per line)
+    const summaryLines: string[] = [];
+    for (let i = 0; i < oldSummaries.length; i += 5) {
+      const chunk = oldSummaries.slice(i, i + 5);
+      const firstId = chunk[0]?.split(':')[0] ?? '';
+      const lastId = chunk[chunk.length - 1]?.split(':')[0] ?? '';
+      const titles = chunk.map(s => s.split(': ').slice(1).join(': ')).join(', ');
+      summaryLines.push(`**${firstId}-${lastId}**: ${titles}`);
+    }
+
+    const summary = `${header}
+
+> ℹ️ ${oldCount} eski karar özetlendi, son ${recentCount} tam gösteriliyor.
+
+### Özetlenen Kararlar
+${summaryLines.map(l => `- ${l}`).join('\n')}
+${recentBlocks.join('')}`;
+
+    return summary;
+  }
+
+  /**
+   * STATE.md sıkıştırma:
+   * - Completed tasks 5'ten fazlaysa özete indir
+   * - Active tasks ve blocked tam kalır
+   */
+  compressState(raw: string, maxCompleted = 5): string {
+    const state = this.parseStateContent(raw);
+    
+    if (state.completedTasks.length <= maxCompleted) {
+      return raw; // sıkıştırma gereksiz
+    }
+
+    const totalCompleted = state.completedTasks.length;
+    const recent = state.completedTasks.slice(-maxCompleted);
+
+    // Sıkıştırılmış render
+    const activeTasks = state.activeTasks
+      .map(t => `- [ ] ${t.taskId} — ${t.title} — status: ${t.status}`)
+      .join('\n');
+
+    const recentTasks = recent
+      .map(t => `- [x] ${t.taskId} — ${t.title}`)
+      .join('\n');
+
+    const blockedTasks = state.blockedTasks
+      .map(t => `- ${t.taskId} — ${t.reason} — ${t.escalationStatus}`)
+      .join('\n');
+
+    return `# STATE — Project Consciousness
+
+## Current Phase: \`${state.phase}\`
+
+## Iteration: ${state.iteration}
+
+## Active Tasks
+${activeTasks || '_yok_'}
+
+## Completed Tasks
+> ${totalCompleted} task tamamlandı (son ${maxCompleted} gösteriliyor, detay: git log)
+
+${recentTasks}
+
+## Blocked
+${blockedTasks || '_yok_'}
+
+## Last Updated: ${state.lastUpdated}
+`;
   }
 
   // ── Private Helpers ─────────────────────────────────────

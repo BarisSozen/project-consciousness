@@ -177,3 +177,25 @@
 - **Gerekçe**: Full pipeline kanıtı: Brief→MISSION→Agent→Code→Evaluator
 - **Alternatifler**: N/A
 - **Durum**: active
+
+---
+
+## D017 — README.md: Açık Kaynak Developer-Oriented Dokümantasyon
+
+- **Tarih**: 2026-03-24T01:42:00+03:00
+- **Bağlam**: GitHub'a açık kaynak olarak yayınlanıyor, developer hedef kitle
+- **Karar**: Tam README: ne/neden/nasıl, ASCII akış diyagramı, kurulum, kullanım, karşılaştırma tablosu, katkı kuralları, MIT lisans
+- **Gerekçe**: İlk izlenim README'den oluşur. Net açıklama + çalışan örnekler + tasarım ilkeleri
+- **Alternatifler**: Minimal README (bilgi eksik), wiki (erişim zor)
+- **Durum**: active
+
+---
+
+## D018 — Hafıza Optimizasyonu: summarizeDecisions + compressState
+
+- **Tarih**: 2026-03-24T01:42:00+03:00
+- **Bağlam**: DECISIONS.md büyüdükçe her agent prompt'u şişiyor (D007 context injection ile çelişki)
+- **Karar**: optimizedSnapshot(): son 10 karar tam, eskiler tek satır özet. Completed tasks 5'ten fazlaysa sadece son 5 göster. 50 karar + 30 task → %68.8 boyut azaltma.
+- **Gerekçe**: D007'deki 30K compact mode'u reactive (aşınca kısalt). Bu proactive (her zaman optimize). İkisi birlikte çalışır.
+- **Alternatifler**: RAG (karmaşık), LLM ile özetleme (maliyet + latency), sadece son N karar (bağlam kaybı)
+- **Durum**: active
