@@ -6,12 +6,14 @@
  */
 
 import { MemoryLayer } from '../memory/index.js';
+import { AgentRunner } from '../agent/index.js';
 import { Planner } from './planner.js';
 import { Evaluator } from './evaluator.js';
 import { Escalator } from './escalator.js';
 import type { 
   OrchestratorConfig,
   TaskPlan,
+  TaskDefinition,
   OrchestrationStep,
   OrchestrationSession,
   AgentResult,
@@ -22,16 +24,25 @@ import type {
 
 export class Orchestrator {
   private memory: MemoryLayer;
+  private agentRunner: AgentRunner;
   private planner: Planner;
   private evaluator: Evaluator;
   private escalator: Escalator;
   private config: OrchestratorConfig;
   private steps: OrchestrationStep[] = [];
   private sessionId: string;
+  /** Full task list — plan'dan populate edilir */
+  private taskMap: Map<string, TaskDefinition> = new Map();
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
     this.memory = new MemoryLayer(config.projectRoot);
+    this.agentRunner = new AgentRunner({
+      workingDirectory: config.projectRoot,
+      timeout: 120_000,
+      maxDepth: 3,
+      log: (msg) => this.log(msg),
+    });
     this.planner = new Planner(config);
     this.evaluator = new Evaluator(config);
     this.escalator = new Escalator();
@@ -54,6 +65,18 @@ export class Orchestrator {
     this.log('📋 Plan oluşturuluyor...');
     const plan = await this.planner.createPlan(brief, memory);
     this.log(`✅ Plan hazır: ${plan.tasks.length} task, ${plan.executionOrder.length} adım`);
+
+    // 3.5 Task map'i doldur
+    for (const task of plan.tasks) {
+      this.taskMap.set(task.id, task);
+    }
+
+    // 3.6 Agent runner sağlık kontrolü
+    const health = await this.agentRunner.checkHealth();
+    this.log(`🏥 Agent runner: ${health.ready ? '✅' : '❌'} ${health.details}`);
+    if (!health.ready) {
+      this.log('⚠️ Agent runner hazır değil — stub modda devam edilecek');
+    }
 
     // 4. Planı kaydet — karar olarak logla
     await this.logPlanDecision(plan);
@@ -89,16 +112,17 @@ export class Orchestrator {
         .filter((t): t is NonNullable<typeof t> => t != null);
 
       if (tasks.length <= this.config.maxParallelAgents) {
-        // Paralel çalıştır
-        const results = await Promise.all(
-          tasks.map(task => this.executeTask(task.id))
+        // Paralel çalıştır — gerçek agent runner ile
+        const memory = await this.memory.snapshot();
+        const results = await this.agentRunner.runParallel(
+          tasks,
+          memory,
+          this.config.maxParallelAgents
         );
         
         // Her sonucu değerlendir
         for (const result of results) {
-          if (result) {
-            await this.evaluateAndProcess(result);
-          }
+          await this.evaluateAndProcess(result);
         }
       } else {
         // Sıralı çalıştır
@@ -115,7 +139,7 @@ export class Orchestrator {
     this.log('\n🏁 Tüm task\'lar tamamlandı, review aşamasında.');
   }
 
-  // ── Task Execution (stub — agent runner entegrasyonu gelecek) ──
+  // ── Task Execution — Gerçek Agent Runner Entegrasyonu ──
 
   private async executeTask(taskId: string): Promise<AgentResult | null> {
     this.log(`  ⚡ Task ${taskId} başlatılıyor...`);
@@ -125,16 +149,30 @@ export class Orchestrator {
       taskId,
     });
 
-    // TODO: Gerçek agent runner entegrasyonu
-    // Şimdilik stub result döndürüyoruz
-    return {
-      taskId,
-      agentId: 'stub-agent',
-      success: true,
-      output: `Task ${taskId} completed (stub)`,
-      artifacts: [],
-      duration: 0,
-    };
+    // Task tanımını bul
+    const task = this.taskMap.get(taskId);
+    if (!task) {
+      this.log(`  ❌ Task ${taskId} tanımı bulunamadı`);
+      return {
+        taskId,
+        agentId: 'unknown',
+        success: false,
+        output: `Task definition not found: ${taskId}`,
+        artifacts: [],
+        duration: 0,
+      };
+    }
+
+    // Güncel memory snapshot al (her task öncesi)
+    const memory = await this.memory.snapshot();
+    this.log(`  📸 Memory snapshot (hash: ${memory.hash})`);
+
+    // Agent runner ile çalıştır
+    const result = await this.agentRunner.runTask(task, memory);
+
+    this.log(`  ${result.success ? '✅' : '❌'} Task ${taskId}: ${result.success ? 'başarılı' : 'başarısız'} (${result.duration}ms)`);
+
+    return result;
   }
 
   // ── Evaluation + Processing ─────────────────────────────
@@ -192,13 +230,48 @@ export class Orchestrator {
 
   private async handleRevision(
     result: AgentResult, 
-    evaluation: EvaluationResult
+    evaluation: EvaluationResult,
+    retryCount = 0
   ): Promise<void> {
-    // TODO: Agent'a geri bildirim gönder ve tekrar çalıştır
+    const maxRetries = this.config.maxRetries;
+
+    if (retryCount >= maxRetries) {
+      this.log(`  🚨 Max retry (${maxRetries}) aşıldı — eskalasyon`);
+      await this.handleEscalation(evaluation);
+      return;
+    }
+
+    this.log(`  🔄 Revize ediliyor (deneme ${retryCount + 1}/${maxRetries})`);
     this.log(`  📝 Geri bildirim: ${evaluation.feedback ?? 'Belirtilmemiş'}`);
-    
-    // Şimdilik revizyon sonrası kabul et
-    await this.markTaskComplete(result);
+
+    // Task'ı bul ve feedback ile yeniden çalıştır
+    const task = this.taskMap.get(result.taskId);
+    if (!task) {
+      this.log(`  ❌ Task tanımı bulunamadı, kabul ediliyor`);
+      await this.markTaskComplete(result);
+      return;
+    }
+
+    // Feedback'i task açıklamasına ekle
+    const revisedTask: TaskDefinition = {
+      ...task,
+      description: `${task.description}\n\n⚠️ ÖNCEKİ DENEME GERİ BİLDİRİMİ:\n${evaluation.feedback ?? 'Kalite skorları düşük, daha dikkatli çalış.'}\n\nÖnceki sorunlar:\n${evaluation.issues.map(i => `- [${i.severity}] ${i.category}: ${i.description}`).join('\n')}`,
+    };
+
+    const memory = await this.memory.snapshot();
+    const retryResult = await this.agentRunner.runTask(revisedTask, memory);
+
+    // Yeni sonucu tekrar değerlendir
+    const retryEval = await this.evaluator.evaluate(retryResult, memory);
+
+    if (retryEval.verdict === 'accept') {
+      this.log(`  ✅ Revize sonrası kabul edildi`);
+      await this.markTaskComplete(retryResult);
+    } else if (retryEval.verdict === 'revise') {
+      await this.handleRevision(retryResult, retryEval, retryCount + 1);
+    } else {
+      await this.handleEscalation(retryEval);
+    }
   }
 
   private async handleEscalation(evaluation: EvaluationResult): Promise<void> {

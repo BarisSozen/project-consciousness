@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "7b4b64d0",
+    "label": "git-commit-t003",
+    "command": "git add -A && git commit -m \"feat(T003): real Agent Runner — Claude CLI process spawner + memory context injection\n\nAgent Runner artık gerçek Claude Code entegrasyonuna sahip:\n\n- ProcessSpawner: claude --print ile child process spawn/kill/timeout\n  - PC_AGENT_DEPTH env var ile sonsuz döngü koruması (D006)\n  - Windows uyumlu shell spawn\n  - Uzun prompt'lar için temp file fallback\n\n- ContextBuilder: Memory-aware prompt oluşturma (D007)\n  - 4 hafıza dosyası tam enjeksiyon\n  - Agent persona sistemi (coder/reviewer/tester/documenter)\n  - 30K+ karakter compact mode\n  - Scope creep uyarısı + çıktı format şablonu\n\n- OutputParser: Agent markdown çıktısını AgentResult'a parse\n  - Structured output (Sonuç/Yapılanlar/Dosyalar/Kriterler) parse\n  - Heuristic fallback (unstructured output)\n  - File path scanning\n\n- Orchestrator entegrasyonu:\n  - executeTask artık gerçek agent runner kullanıyor\n  - Paralel execution agentRunner.runParallel ile\n  - Revision handler: feedback ile retry (max 3), sonra escalate\n  - Health check on startup\n\nKararlar: D005 (CLI --print), D006 (depth protection), D007 (context injection)\nTests: 36/36 passing (5 suites)\" 2>&1",
+    "cwd": "C:\\Users\\Baris\\project-consciousness",
+    "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
+    "persistAcrossSessions": false,
+    "startedAt": 1774300800275,
+    "processType": "generic",
+    "group": null,
+    "readyPattern": null,
+    "readyPort": null,
+    "pid": 89504
+  }
+]

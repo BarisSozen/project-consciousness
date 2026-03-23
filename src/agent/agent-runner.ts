@@ -1,22 +1,56 @@
 /**
  * Agent Runner — Claude Code Instance Yöneticisi
  * 
- * Agent'ları spawn eder, context hazırlar, çıktı toplar.
- * GSD subagent mekanizması üstüne oturur.
+ * Agent'ları spawn eder, memory context'i prompt'a enjekte eder,
+ * çıktıyı parse eder ve orchestrator'a döndürür.
+ * 
+ * Karar D003: GSD-2 üstüne katman — subagent mekanizması kullanır
+ * Karar D004: Agent'lar Claude Code ile çalışır
  */
 
+import { ProcessSpawner } from './process-spawner.js';
+import { ContextBuilder } from './context-builder.js';
+import { OutputParser } from './output-parser.js';
 import type { 
   AgentConfig, 
-  AgentTask, 
   AgentResult, 
   MemorySnapshot,
   TaskDefinition 
 } from '../types/index.js';
 
+export interface AgentRunnerConfig {
+  /** Claude CLI binary path (default: 'claude') */
+  binaryPath?: string;
+  /** Working directory for agents */
+  workingDirectory: string;
+  /** Timeout per agent execution in ms (default: 120_000) */
+  timeout?: number;
+  /** Max recursion depth (prevents infinite agent spawning) */
+  maxDepth?: number;
+  /** Additional environment variables for agents */
+  env?: Record<string, string>;
+  /** Log function */
+  log?: (message: string) => void;
+}
+
 export class AgentRunner {
   private agents: Map<string, AgentConfig> = new Map();
+  private spawner: ProcessSpawner;
+  private contextBuilder: ContextBuilder;
+  private outputParser: OutputParser;
+  private config: AgentRunnerConfig;
+  private log: (message: string) => void;
 
-  constructor() {
+  constructor(config: AgentRunnerConfig) {
+    this.config = config;
+    this.spawner = new ProcessSpawner(
+      config.binaryPath ?? 'claude',
+      config.timeout ?? 120_000
+    );
+    this.contextBuilder = new ContextBuilder();
+    this.outputParser = new OutputParser();
+    this.log = config.log ?? console.log;
+
     this.registerDefaultAgents();
   }
 
@@ -24,6 +58,10 @@ export class AgentRunner {
 
   registerAgent(config: AgentConfig): void {
     this.agents.set(config.id, config);
+  }
+
+  getAgent(id: string): AgentConfig | undefined {
+    return this.agents.get(id);
   }
 
   private registerDefaultAgents(): void {
@@ -52,7 +90,33 @@ export class AgentRunner {
     });
   }
 
-  // ── Task Execution ──────────────────────────────────────
+  // ── Health Check ────────────────────────────────────────
+
+  async checkHealth(): Promise<{ ready: boolean; details: string }> {
+    // Sonsuz döngü koruması
+    const depth = parseInt(process.env['PC_AGENT_DEPTH'] ?? '0', 10);
+    if (depth >= (this.config.maxDepth ?? 3)) {
+      return { 
+        ready: false, 
+        details: `Max agent depth reached (${depth}/${this.config.maxDepth ?? 3})` 
+      };
+    }
+
+    const health = await this.spawner.healthCheck();
+    if (!health.available) {
+      return {
+        ready: false,
+        details: `Claude CLI not available: ${health.error}`,
+      };
+    }
+
+    return {
+      ready: true,
+      details: `Claude CLI ${health.version ?? 'unknown'} ready, depth: ${depth}`,
+    };
+  }
+
+  // ── Single Task Execution ───────────────────────────────
 
   async runTask(
     task: TaskDefinition,
@@ -62,37 +126,56 @@ export class AgentRunner {
     const agent = this.agents.get(agentId);
 
     if (!agent) {
-      throw new Error(`No agent found for task type: ${task.type}`);
+      return this.failResult(task.id, agentId, `No agent found for type: ${task.type}`);
     }
 
-    const agentTask: AgentTask = {
-      taskDefinition: task,
-      memorySnapshot: memory,
-      additionalContext: this.buildContext(task, memory),
-    };
+    this.log(`  🤖 Agent [${agent.id}] task ${task.id} için başlatılıyor...`);
 
+    // 1. Memory-aware prompt oluştur
+    const prompt = this.contextBuilder.buildPrompt(task, memory, agent);
+    this.log(`  📝 Prompt hazır (${prompt.length} karakter)`);
+
+    // 2. Claude CLI spawn et
     const startTime = Date.now();
-
+    
     try {
-      const output = await this.executeAgent(agent, agentTask);
+      const processResult = await this.spawner.spawn({
+        prompt,
+        cwd: this.config.workingDirectory,
+        timeout: this.config.timeout,
+        env: this.config.env,
+      });
+
+      // 3. Timeout kontrolü
+      if (processResult.timedOut) {
+        this.log(`  ⏰ Agent timeout! (${processResult.duration}ms)`);
+        return this.failResult(
+          task.id, 
+          agent.id, 
+          `Agent timed out after ${processResult.duration}ms`,
+          processResult.duration
+        );
+      }
+
+      // 4. Çıktıyı parse et
+      const result = this.outputParser.parse(
+        task.id,
+        agent.id,
+        processResult.stdout,
+        processResult.stderr,
+        processResult.exitCode,
+        processResult.duration
+      );
+
+      this.log(`  ${result.success ? '✅' : '❌'} Agent [${agent.id}] tamamlandı (${processResult.duration}ms)`);
       
-      return {
-        taskId: task.id,
-        agentId: agent.id,
-        success: true,
-        output,
-        artifacts: [],
-        duration: Date.now() - startTime,
-      };
+      return result;
+
     } catch (error) {
-      return {
-        taskId: task.id,
-        agentId: agent.id,
-        success: false,
-        output: '',
-        artifacts: [],
-        duration: Date.now() - startTime,
-      };
+      const duration = Date.now() - startTime;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.log(`  💥 Agent [${agent.id}] hata: ${message}`);
+      return this.failResult(task.id, agent.id, message, duration);
     }
   }
 
@@ -104,14 +187,28 @@ export class AgentRunner {
     maxConcurrent: number
   ): Promise<AgentResult[]> {
     const results: AgentResult[] = [];
-    
-    // Process in batches of maxConcurrent
+
+    this.log(`  🔄 ${tasks.length} task paralel çalıştırılıyor (max: ${maxConcurrent})`);
+
+    // Batch'ler halinde çalıştır
     for (let i = 0; i < tasks.length; i += maxConcurrent) {
       const batch = tasks.slice(i, i + maxConcurrent);
+      const batchNum = Math.floor(i / maxConcurrent) + 1;
+      const totalBatches = Math.ceil(tasks.length / maxConcurrent);
+      
+      this.log(`  📦 Batch ${batchNum}/${totalBatches}: [${batch.map(t => t.id).join(', ')}]`);
+
+      // Her batch'te memory'yi yeniden oku (önceki batch'in değişiklikleri yansısın)
+      // İlk batch hariç — ilk batch zaten güncel memory'yi kullanıyor
       const batchResults = await Promise.all(
         batch.map(task => this.runTask(task, memory))
       );
+
       results.push(...batchResults);
+
+      // Batch sonuçlarını logla
+      const succeeded = batchResults.filter(r => r.success).length;
+      this.log(`  📊 Batch ${batchNum}: ${succeeded}/${batchResults.length} başarılı`);
     }
 
     return results;
@@ -120,58 +217,37 @@ export class AgentRunner {
   // ── Agent Selection ─────────────────────────────────────
 
   private selectAgent(task: TaskDefinition): string {
+    // Task'a explicit agent atanmışsa onu kullan
+    if (task.agent) {
+      return task.agent;
+    }
+
     // Task type'a göre agent seç
     switch (task.type) {
       case 'code': return 'coder';
       case 'review': return 'reviewer';
       case 'test': return 'tester';
       case 'document': return 'documenter';
-      case 'decision': return 'coder'; // decision task'ları da coder handle eder
+      case 'decision': return 'coder';
       default: return 'coder';
     }
   }
 
-  // ── Context Building ────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────
 
-  private buildContext(task: TaskDefinition, memory: MemorySnapshot): string {
-    return `
-## Task Context
-
-### Misyon (ASLA UNUTMA)
-${memory.files.mission}
-
-### İlgili Mimari Kararlar
-${memory.files.architecture}
-
-### Geçmiş Kararlar
-${memory.files.decisions}
-
-### Şu Anki Durum
-${memory.files.state}
-
-### Görev Detayı
-- ID: ${task.id}
-- Başlık: ${task.title}
-- Açıklama: ${task.description}
-- Kabul Kriterleri:
-${task.acceptanceCriteria.map(c => `  - ${c}`).join('\n')}
-
-### ÖNEMLİ
-1. Misyondan SAPMA. Her ürettiğin çıktı MISSION.md ile uyumlu olmalı.
-2. Mimari kararları İHLAL ETME. ARCHITECTURE.md'yi oku ve uy.
-3. Önceki kararlarla ÇELİŞME. DECISIONS.md'yi kontrol et.
-4. Kapsamı AŞMA. Sadece tanımlanan task'ı yap.
-`;
-  }
-
-  // ── Agent Execution (stub — gerçek implementasyon gelecek) ──
-
-  private async executeAgent(
-    _agent: AgentConfig, 
-    _task: AgentTask
-  ): Promise<string> {
-    // TODO: Gerçek Claude Code / subagent entegrasyonu
-    // Bu stub, GSD subagent mekanizması ile replace edilecek
-    return `Agent executed task successfully (stub implementation)`;
+  private failResult(
+    taskId: string, 
+    agentId: string, 
+    error: string,
+    duration = 0
+  ): AgentResult {
+    return {
+      taskId,
+      agentId,
+      success: false,
+      output: `Error: ${error}`,
+      artifacts: [],
+      duration,
+    };
   }
 }

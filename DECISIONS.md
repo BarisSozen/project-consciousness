@@ -45,3 +45,36 @@
 - **Gerekçe**: Orchestrator hafif ve hızlı olmalı (API), agent'lar tam yetenekli olmalı (Claude Code)
 - **Alternatifler**: Her ikisi için Claude Code, her ikisi için API
 - **Durum**: active
+
+---
+
+## D005 — Agent Runner: Claude CLI --print Modu
+
+- **Tarih**: 2026-03-24T00:20:00+03:00
+- **Bağlam**: Agent'ların Claude Code ile nasıl iletişim kuracağının belirlenmesi (T003)
+- **Karar**: `claude --print` ile child process spawn, prompt stdin/args üzerinden, çıktı stdout parse
+- **Gerekçe**: Non-interactive mod en güvenli ve parse edilebilir. Verbose flag reasoning içerir. GSD subagent'tan bağımsız ama uyumlu.
+- **Alternatifler**: Claude API direkt kullanımı (agent'lar dosya sistemi erişimine ihtiyaç duyar), GSD subagent SDK entegrasyonu (tight coupling)
+- **Durum**: active
+
+---
+
+## D006 — Agent Depth Protection
+
+- **Tarih**: 2026-03-24T00:20:00+03:00
+- **Bağlam**: Agent'ın kendi içinde subagent spawn etmesi sonsuz döngüye yol açabilir
+- **Karar**: PC_AGENT_DEPTH env var ile max 3 seviye derinlik koruması
+- **Gerekçe**: Basit, env var tabanlı, her spawn'da depth artar, health check'te kontrol edilir
+- **Alternatifler**: Process tree analizi (karmaşık), token bütçesi (ölçüm zorluğu)
+- **Durum**: active
+
+---
+
+## D007 — Memory-Aware Context Injection
+
+- **Tarih**: 2026-03-24T00:20:00+03:00
+- **Bağlam**: Agent'lara hafıza nasıl enjekte edilecek (T003)
+- **Karar**: Her agent prompt'una 4 hafıza dosyasının tam içeriği + agent persona + task detayı + çıktı formatı dahil edilir. 30K karakter üstünde compact mod aktif olur.
+- **Gerekçe**: Agent her çağrıda tam bağlama sahip olur, hafıza kaybı imkansız. Compact mod token bütçesini korur.
+- **Alternatifler**: Sadece ilgili bölümleri göndermek (bağlam kaybı riski), RAG tabanlı retrieval (karmaşıklık)
+- **Durum**: active
