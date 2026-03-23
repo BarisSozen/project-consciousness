@@ -72,15 +72,16 @@ export class ProcessSpawner {
       ),
     };
 
-    // Uzun prompt: stdin pipe ile gönder
-    if (prompt.length > WINDOWS_ARG_LIMIT) {
+    // Flags varken veya uzun prompt: stdin pipe ile gönder (en güvenli)
+    // Args-only sadece flagsiz kısa prompt'larda kullan
+    if (flags.length > 0 || prompt.length > WINDOWS_ARG_LIMIT) {
       return this.spawnWithStdin(binaryPath, prompt, flags, cwd, timeout, envVars, startTime);
     }
 
-    // Kısa prompt: args ile gönder
+    // Kısa prompt, flag yok: args ile gönder
     return this.runProcess({
       binary: binaryPath,
-      args: ['--print', ...flags, prompt],
+      args: ['--print', prompt],
       cwd,
       timeout,
       env: envVars,

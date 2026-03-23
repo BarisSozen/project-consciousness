@@ -122,3 +122,25 @@
 - **Gerekçe**: E2E sonrası gerçek dünya testi — orchestrator döngüsünün tüm adımları çalışmalı
 - **Alternatifler**: Manuel dosya oluşturma (orchestrator kanıtı olmaz)
 - **Durum**: active
+
+---
+
+## D012 — BriefCollector: SCOPE / ANTI-SCOPE Yapısı
+
+- **Tarih**: 2026-03-24T01:05:00+03:00
+- **Bağlam**: Kullanıcıdan yapılandırılmış brief toplama ve MISSION.md'ye yazma
+- **Karar**: MISSION.md'ye ## SCOPE, ## ANTI-SCOPE, ## SUCCESS CRITERIA bölümleri eklenir. Anti-scope: protectedFiles, lockedDecisions, forbiddenDeps, breakingChanges.
+- **Gerekçe**: Agent'ların ne yapmaması gerektiğini bilmesi misyon kadar önemli. Dosya tabanlı (D001 ile uyumlu), insan okunabilir, parse edilebilir.
+- **Alternatifler**: Ayrı BRIEF.md dosyası (dağınıklık), JSON config (insan okunamaz)
+- **Durum**: active
+
+---
+
+## D013 — Evaluator v2: Gerçek Kontroller + Anti-Scope
+
+- **Tarih**: 2026-03-24T01:05:00+03:00
+- **Bağlam**: Agent çıktısını LLM'e sormak yerine gerçek komutlarla doğrulama
+- **Karar**: Stack-aware otomatik kontroller (tsc/npm test/pytest/go build) + MISSION.md'deki ANTI-SCOPE parse + dosya varlık kontrolü. LLM opsiyonel.
+- **Gerekçe**: Gerçek kontroller yalan söyleyemez. Anti-scope kritik ihlaller için otomatik FAIL.
+- **Alternatifler**: Sadece LLM değerlendirme (hallucination riski), sadece dosya kontrolü (kalite ölçülmez)
+- **Durum**: active

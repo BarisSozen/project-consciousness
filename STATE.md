@@ -1,39 +1,40 @@
 # STATE — Project Consciousness
 
-## Current Phase: `reviewing`
+## Current Phase: `executing`
 
-## Iteration: 6
+## Iteration: 7
 
 ## Active Tasks
 - [ ] T005 — Retry/escalation loop gerçek kullanıcı etkileşimi — status: pending
 
 ## Completed Tasks
-- [x] T001 — Proje iskeleti ve dependency'ler — 14/14 test, typecheck temiz
-- [x] T003 — Agent Runner gerçek Claude Code entegrasyonu — 36/36 test, typecheck temiz
-- [x] T004 — E2E integration test — 42/42 test, gerçek Claude CLI doğrulandı
-- [x] T-REAL-001 — Create docs/GLOSSARY.md — ✅ Agent dosyayı gerçekten oluşturdu (97s)
+- [x] T001 — Proje iskeleti ve dependency'ler
+- [x] T003 — Agent Runner gerçek Claude Code entegrasyonu
+- [x] T004 — E2E integration test
+- [x] T-REAL-001 — docs/GLOSSARY.md gerçek agent ile oluşturuldu
+- [x] GÖREV-1 — BriefCollector modülü (SCOPE / ANTI-SCOPE toplama)
+- [x] GÖREV-2 — Evaluator v2 (gerçek kontroller + anti-scope ihlal tespiti)
 
 ## Blocked
 _henüz yok_
 
 ## Key Metrics
-- Toplam karar: 11 (D001-D011)
-- Toplam task: 5
-- Tamamlanan: 4
-- Test: 42 passing (6 suites)
+- Toplam karar: 13 (D001-D013)
+- Toplam task: 7
+- Tamamlanan: 6
+- Test: 57 passing (7 suites — unit only), +6 E2E
 - TypeScript: strict, 0 error
-- Gerçek görev: docs/GLOSSARY.md oluşturuldu (10 terim, 3179 karakter)
 
-## Real-World Task Kanıtı
-```
-Brief: "docs/GLOSSARY.md oluştur"
-Agent: documenter (claude.exe --print --dangerously-skip-permissions)
-Prompt: 13170 karakter (4 hafıza dosyası + task + persona)
-Süre: 97 saniye
-Çıktı: 5/5 kabul kriteri karşılandı
-Dosya: docs/GLOSSARY.md (3179 chars, 10 terim, Türkçe)
-DECISIONS.md: D011 olarak loglandı
-STATE.md: T-REAL-001 tamamlandı
-```
+## Components
+- ✅ Memory Layer — snapshot, validate, append, parse
+- ✅ Orchestrator — plan → execute → evaluate → escalate
+- ✅ Planner — Claude API task plan generation
+- ✅ Evaluator v2 — stack-aware real checks + anti-scope + LLM (optional)
+- ✅ Escalator — human escalation formatting
+- ✅ Agent Runner — ProcessSpawner + ContextBuilder + OutputParser
+- ✅ BriefCollector — interaktif CLI, SCOPE/ANTI-SCOPE/SUCCESS CRITERIA
+- ✅ Process Spawner — stdin pipe, timeout, depth protection
+- ✅ Context Builder — memory-aware prompts, compact mode, personas
+- ✅ Output Parser — structured markdown → AgentResult
 
-## Last Updated: 2026-03-24T00:48:00+03:00
+## Last Updated: 2026-03-24T01:07:00+03:00

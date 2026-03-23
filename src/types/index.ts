@@ -174,3 +174,53 @@ export interface OrchestrationSession {
   steps: OrchestrationStep[];
   finalState?: StateData;
 }
+
+// ============================================================
+// Brief Types
+// ============================================================
+
+export interface BriefScope {
+  whatToBuild: string;
+  stack: StackType;
+  stackDetails?: string;
+  successCriteria: string[];
+}
+
+export interface BriefAntiScope {
+  protectedFiles: string[];
+  lockedDecisions: string[];
+  forbiddenDeps: string[];
+  breakingChanges: string[];
+}
+
+export interface Brief {
+  scope: BriefScope;
+  antiScope: BriefAntiScope;
+  collectedAt: string;
+}
+
+export type StackType = 'typescript-node' | 'react' | 'python' | 'go' | 'other';
+
+// ============================================================
+// Evaluation Check Types
+// ============================================================
+
+export interface CheckResult {
+  name: string;
+  command?: string;
+  passed: boolean;
+  output?: string;
+  duration?: number;
+}
+
+export interface AntiScopeViolation {
+  type: 'protected-file' | 'forbidden-dep' | 'breaking-change';
+  detail: string;
+  file?: string;
+}
+
+export interface RealEvaluationResult extends EvaluationResult {
+  checks: CheckResult[];
+  antiScopeViolations: AntiScopeViolation[];
+  stackDetected: StackType;
+}
