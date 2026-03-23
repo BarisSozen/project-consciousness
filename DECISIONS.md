@@ -199,3 +199,14 @@
 - **Gerekçe**: D007'deki 30K compact mode'u reactive (aşınca kısalt). Bu proactive (her zaman optimize). İkisi birlikte çalışır.
 - **Alternatifler**: RAG (karmaşık), LLM ile özetleme (maliyet + latency), sadece son N karar (bağlam kaybı)
 - **Durum**: active
+
+---
+
+## D019 — CLI Dağıtım: pc init/run/status/log
+
+- **Tarih**: 2026-03-24T01:55:00+03:00
+- **Bağlam**: Projenin npx/global install/clone ile çalışması gerekiyor
+- **Karar**: bin/pc.ts CLI → pc init (interaktif brief), pc run (orchestrator), pc status (STATE.md), pc log (DECISIONS.md). package.json: bin, exports, files, prepublishOnly.
+- **Gerekçe**: 3 dağıtım modu: npx (zero install), npm -g (global), git clone. Hepsi aynı CLI.
+- **Alternatifler**: Sadece programmatic API (UX yok), ayrı CLI paketi (dağınıklık)
+- **Durum**: active

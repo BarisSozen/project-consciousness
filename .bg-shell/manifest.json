@@ -1,16 +1,16 @@
 [
   {
-    "id": "f9dd9854",
-    "label": "git-push",
-    "command": "git add -A && git commit -m \"feat: README.md + memory optimization (summarize decisions, compress state)\n\nGÖREV 1 — README.md:\n- What/why/how with ASCII flow diagram\n- GSD-2 vs Paperclip comparison table\n- Quick start (install, API key, run)\n- BriefCollector programmatic usage example\n- Memory files table (who writes, how often)\n- Project structure tree\n- Evaluator real checks table (TS/React/Python/Go)\n- Contributing guidelines + design principles\n- MIT license\n\nGÖREV 2 — Memory Optimization:\n- summarizeDecisions(raw, recentCount=10):\n  Son 10 karar tam, eskiler tek satır özet\n  Gruplar: D001-D005: title1, title2, ...\n- compressState(raw, maxCompleted=5):\n  Son 5 completed task tam, geri kalanı '12 task tamamlandı' özeti\n  Active + blocked tam kalır\n- optimizedSnapshot(recentDecisions, maxCompleted):\n  Mission + Architecture tam, Decisions + State optimized\n- Orchestrator artık optimizedSnapshot() kullanıyor\n- ContextBuilder buildMemoryContext() dokümantasyonu güncellendi\n\nPerformance: 50 karar + 30 task → 11138 → 3473 chars (68.8% azalma)\n\nKararlar: D017 (README), D018 (hafıza optimizasyonu)\nTests: 8 yeni (summarize, compress, optimizedSnapshot, size reduction)\nTypeScript: strict, 0 error\" && git push 2>&1",
+    "id": "15bcb48d",
+    "label": "commit-push",
+    "command": "git add -A && git commit -m \"feat: CLI distribution — pc init/run/status/log + npm publish ready\n\nCLI (src/bin/pc.ts):\n  pc init      → interactive BriefCollector, creates 4 memory files\n  pc run [b]   → orchestrator (reads MISSION.md if no brief)\n  pc status    → shows STATE.md\n  pc log       → shows DECISIONS.md\n  pc help/version\n\nPackage distribution:\n  - bin: { pc: dist/bin/pc.js }\n  - exports: ./memory, ./orchestrator, ./agent, ./brief\n  - files: dist, README, LICENSE, .env.example\n  - prepublishOnly: npm run build\n  - 3 install modes: npx, npm -g, git clone\n\nREADME.md updated:\n  - Quick Start: Option A (npx), B (global), C (clone)\n  - CLI commands table\n  - Programmatic import examples\n\nNew files:\n  - src/bin/pc.ts — CLI entry point\n  - .env.example — ANTHROPIC_API_KEY template\n  - LICENSE — MIT\n\nKarar: D019\nTests: 10 CLI tests (help, version, status, log, run error)\nTypeScript: strict, 0 error\" && git.exe push origin master 2>&1",
     "cwd": "C:\\Users\\Baris\\project-consciousness",
     "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
     "persistAcrossSessions": false,
-    "startedAt": 1774305802391,
+    "startedAt": 1774306622391,
     "processType": "generic",
     "group": null,
     "readyPattern": null,
     "readyPort": null,
-    "pid": 132112
+    "pid": 85284
   }
 ]

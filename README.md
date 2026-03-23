@@ -66,42 +66,58 @@ USER
 
 ## Quick Start
 
+### Option A: npx (no install)
+
+```bash
+cd your-project
+npx project-consciousness init     # interactive brief collection
+npx project-consciousness run      # orchestrator starts
+```
+
+### Option B: Global install
+
+```bash
+npm install -g project-consciousness
+cd your-project
+pc init       # interactive brief → creates MISSION.md, ARCHITECTURE.md, etc.
+pc run        # orchestrator reads MISSION.md and starts working
+pc status     # show STATE.md
+pc log        # show DECISIONS.md
+```
+
+### Option C: Clone & build
+
 ```bash
 git clone https://github.com/BarisSozen/project-consciousness.git
 cd project-consciousness
 npm install
+npm run build
 ```
 
-Set your API key:
+### API Key
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+# or copy .env.example → .env
 ```
 
-Run with a brief:
+### CLI Commands
 
-```bash
-npx tsx src/index.ts "Build a calculator with add, subtract, multiply, divide"
-```
+| Command | Description |
+|---------|-------------|
+| `pc init` | Interactive brief collection → creates 4 memory files |
+| `pc run [brief]` | Start orchestrator (reads MISSION.md if no brief given) |
+| `pc run "Build X"` | Start orchestrator with inline brief |
+| `pc status` | Show current STATE.md |
+| `pc log` | Show DECISIONS.md |
+| `pc help` | Help message |
 
-Or use the brief collector programmatically:
+### Programmatic Usage
 
 ```typescript
-import { BriefCollector } from './src/brief/index.js';
-
-const brief = BriefCollector.create(
-  {
-    whatToBuild: 'REST API with express',
-    stack: 'typescript-node',
-    successCriteria: ['npm test passes', 'all endpoints work'],
-  },
-  {
-    protectedFiles: ['MISSION.md'],
-    forbiddenDeps: ['lodash'],
-    lockedDecisions: [],
-    breakingChanges: ['existing tests must not break'],
-  }
-);
+import { BriefCollector } from 'project-consciousness/brief';
+import { MemoryLayer } from 'project-consciousness/memory';
+import { Orchestrator } from 'project-consciousness/orchestrator';
 ```
 
 ## Memory Files
