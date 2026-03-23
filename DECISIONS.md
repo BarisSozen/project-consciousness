@@ -210,3 +210,47 @@
 - **Gerekçe**: 3 dağıtım modu: npx (zero install), npm -g (global), git clone. Hepsi aynı CLI.
 - **Alternatifler**: Sadece programmatic API (UX yok), ayrı CLI paketi (dağınıklık)
 - **Durum**: active
+
+---
+
+## D020 — ArchitectAgent: Kodlama Öncesi Mimari Kararlar
+
+- **Tarih**: 2026-03-24T02:22:00+03:00
+- **Bağlam**: Agent'lar kod yazmaya başlamadan önce auth/DB/API/frontend/deployment kararları net olmalı
+- **Karar**: ArchitectAgent interaktif CLI ile 5 soru sorar, cevapları ARCHITECTURE.md'ye yazar. runWithDefaults() test/CI modu. Kararlar parse edilebilir format.
+- **Gerekçe**: Mimari kararlar bir kez alınır, tüm agent'lar okur. Memory-First ilkesi (D001).
+- **Alternatifler**: LLM'e sorma (hallucination), her agent kendisi karar versin (tutarsızlık)
+- **Durum**: active
+
+---
+
+## D021 — Milestone Sistemi: Aşamalı Planlama
+
+- **Tarih**: 2026-03-24T02:22:00+03:00
+- **Bağlam**: Tek büyük plan yerine bağımlılık sırası olan milestone'lar gerekiyor
+- **Karar**: MilestoneManager brief + architecture'dan M01-M0N milestone zinciri üretir. dependsOn ile sıralama, STATE.md'ye milestone durumu yazılır.
+- **Gerekçe**: Foundation → Auth → API → Frontend → Integration doğal akış. Her milestone bağımsız test edilebilir.
+- **Alternatifler**: Düz task listesi (bağımlılık kaybı), LLM planlama (tutarsız)
+- **Durum**: active
+
+---
+
+## D022 — DependencyGraph: Topological Sort + Paralel Gruplama
+
+- **Tarih**: 2026-03-24T02:22:00+03:00
+- **Bağlam**: Task'lar arası bağımlılık yönetimi ve paralel çalışma optimizasyonu
+- **Karar**: Kahn's algorithm ile topological sort. Cycle detection (DFS). getReadyTasks() ile dinamik paralel gruplama.
+- **Gerekçe**: Doğru sıralama + maksimum paralellik. Cycle'lar erken tespit edilir.
+- **Alternatifler**: Sıralı çalıştırma (yavaş), LLM sıralama (güvenilmez)
+- **Durum**: active
+
+---
+
+## D023 — Crash Recovery: Checkpoint + Resume
+
+- **Tarih**: 2026-03-24T02:22:00+03:00
+- **Bağlam**: Uzun orchestration session'ları çökebilir, kaldığı yerden devam gerekli
+- **Karar**: .pc-checkpoint.json dosyasına milestone/task durumu kaydedilir. Başlangıçta canResume() kontrolü, kullanıcıya sorma, kaldığı milestone'dan devam.
+- **Gerekçe**: Fail-Safe ilkesi. Büyük projeler saatlerce sürebilir, her şeyi baştan başlatmak kabul edilemez.
+- **Alternatifler**: STATE.md'den recovery (daha az granüler), session DB (karmaşık)
+- **Durum**: active

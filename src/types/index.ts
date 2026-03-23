@@ -232,3 +232,57 @@ export interface RealEvaluationResult extends EvaluationResult {
   antiScopeViolations: AntiScopeViolation[];
   stackDetected: StackType;
 }
+
+// ============================================================
+// Architecture Decision Types
+// ============================================================
+
+export type AuthStrategy = 'jwt' | 'session' | 'oauth' | 'api-key' | 'none';
+export type DatabaseChoice = 'postgresql' | 'mongodb' | 'sqlite' | 'in-memory';
+export type ApiStyle = 'rest' | 'graphql' | 'trpc';
+export type FrontendChoice = 'react' | 'vue' | 'nextjs' | 'api-only';
+export type DeployTarget = 'local' | 'docker' | 'cloud';
+
+export interface ArchitectureDecisions {
+  auth: AuthStrategy;
+  database: DatabaseChoice;
+  apiStyle: ApiStyle;
+  frontend: FrontendChoice;
+  deployment: DeployTarget;
+  extras?: Record<string, string>;
+}
+
+// ============================================================
+// Milestone Types
+// ============================================================
+
+export type MilestoneStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface Milestone {
+  id: string;           // M01, M02, ...
+  title: string;
+  description: string;
+  dependsOn: string[];  // milestone IDs
+  tasks: TaskDefinition[];
+  status: MilestoneStatus;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface MilestonePlan {
+  milestones: Milestone[];
+  totalTasks: number;
+}
+
+// ============================================================
+// Recovery Types
+// ============================================================
+
+export interface Checkpoint {
+  sessionId: string;
+  milestoneId: string;
+  taskId?: string;
+  completedMilestones: string[];
+  completedTasks: string[];
+  timestamp: string;
+}

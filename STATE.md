@@ -1,28 +1,32 @@
 # STATE — Project Consciousness
 
-## Current Phase: `completed`
+## Current Phase: `executing`
 
-## Iteration: 12
+## Iteration: 13
 
 ## Active Tasks
 _yok_
 
 ## Completed Tasks
-- [x] T001 — Proje iskeleti
-- [x] T003 — Agent Runner
-- [x] T004 — E2E test
-- [x] T-REAL-001 — docs/GLOSSARY.md
+- [x] T001-T005 — Core system (scaffold, agent, E2E, retry, escalation)
 - [x] GÖREV-1+2 — BriefCollector + Evaluator v2
-- [x] T-CALC-001 — Calculator entegrasyon
-- [x] T005 — Retry loop + escalation
-- [x] T-TODO-001 — TODO REST API
-- [x] README + MEMOPT — Docs + hafıza optimizasyonu
-- [x] CLI — pc init/run/status/log, npm publish hazır
+- [x] T-CALC, T-TODO — Real-world entegrasyonlar
+- [x] README, MEMOPT, CLI — Docs, optimization, distribution
+- [x] G1-ArchitectAgent — İnteraktif mimari kararlar (auth/DB/API/FE/deploy)
+- [x] G2-MilestoneManager — Aşamalı planlama (dependsOn, auto-generate)
+- [x] G3-DependencyGraph — Topological sort + paralel gruplama
+- [x] G5-RecoveryManager — Crash recovery (.pc-checkpoint.json)
+- [x] G6-Integration — Blog API pipeline testi (architect→milestone→graph→recovery)
 
 ## Key Metrics
-- Kararlar: 19 (D001-D019)
-- Test: 130+ passing (13 suites)
+- Kararlar: 23 (D001-D023)
+- Test: 144 passing (15 suites)
 - TypeScript: strict, 0 error
-- CLI: pc init / pc run / pc status / pc log
 
-## Last Updated: 2026-03-24T01:58:00+03:00
+## Components
+- ✅ ArchitectAgent — auth/DB/API/frontend/deployment sorgusu
+- ✅ MilestoneManager — brief+arch → M01...M0N milestone chain
+- ✅ DependencyGraph — Kahn's topological sort, cycle detection
+- ✅ RecoveryManager — .pc-checkpoint.json save/load/resume
+
+## Last Updated: 2026-03-24T02:22:00+03:00
