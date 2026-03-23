@@ -166,3 +166,14 @@
 - **Gerekçe**: Retry ile küçük hataları otomatik düzelt, büyük sorunlarda insana sor. Fail-safe ilkesi (D001 tasarım ilkeleri).
 - **Alternatifler**: Sonsuz retry (tehlikeli), her hata direkt eskalasyon (gereksiz müdahale), sadece log (sessiz hata)
 - **Durum**: active
+
+---
+
+## D016 — TODO API entegrasyon testi
+
+- **Tarih**: 2026-03-23T22:30:36.365Z
+- **Bağlam**: Gerçek brief ile TODO REST API üretimi ve değerlendirmesi
+- **Karar**: Verdict: revise. Quality: 67%. Checks: 6/7. Anti-scope: 0 ihlal.
+- **Gerekçe**: Full pipeline kanıtı: Brief→MISSION→Agent→Code→Evaluator
+- **Alternatifler**: N/A
+- **Durum**: active

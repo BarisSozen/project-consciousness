@@ -1,16 +1,16 @@
 [
   {
-    "id": "7414078f",
-    "label": "git-t005",
-    "command": "git add -A && git commit -m \"feat(T005): retry loop + real escalation with readline user interaction\n\nRETRY LOOP (Orchestrator.handleRevision):\n- Max 3 retry, her retry'da feedback chain prompt'a eklenir\n- Önceki hata + skorlar + issue listesi agent'a gönderilir\n- Her retry sonrası Evaluator tekrar çalışır\n- accept → markComplete, revise → retry+1, escalate → kullanıcıya sor\n- 3 retry aşıldığında otomatik escalation\n\nESCALATION (Escalator.promptUser):\n- Terminal'e formatlanmış eskalasyon mesajı (emoji + retry sayısı + skorlar)\n- Gerçek readline ile kullanıcı yanıtı: 1=devam / 2=atla / 3=durdur\n- parseResponse: numara, Türkçe kelime, İngilizce kelime desteği\n- setAskFn(): test injection — readline mock'lanabilir\n- Kullanıcı 'durdur' → phase:paused, Error throw → orchestration durur\n\nORCHESTRATOR ENTEGRASYONU:\n- evaluateAndProcess: escalate → handleEscalation → response → continue/skip/stop\n- handleRevision: max retry → handleEscalation → kullanıcı kararı\n- markTaskSkipped: skip seçeneği için STATE.md güncelleme\n- handleEscalation artık EscalationResponse döndürüyor (void yerine)\n\nTYPES:\n- EscalationAction: 'continue' | 'skip' | 'stop' | 'retry'\n- EscalationResponse: { action, feedback? }\n- EscalationRequest: retryCount? eklendi\n\nTESTS (28 yeni test):\n- parseResponse: 1/2/3, devam/atla/durdur, retry, default\n- createEscalation: retry count, urgency levels\n- formatForHuman: retry info, numbered options\n- promptUser (mocked): skip/stop/continue\n- Retry loop: exhaust retries, accept on retry, feedback chain\n- Full scenario: 3 retries → escalate → user skips\n\nKarar: D015\nTests: 96/96 passing (10 suites), TypeScript strict 0 error\" 2>&1",
+    "id": "5b693930",
+    "label": "git-todo",
+    "command": "git add -A && git commit -m \"feat(T-TODO-001): TODO REST API — agent-generated express server + tests\n\nAgent (coder) 176s'de tam bir TODO REST API üretti:\n\nsrc/todo/server.ts — Express server (createApp factory):\n  GET /todos     → in-memory list döndürür\n  POST /todos    → { title } ile yeni todo, auto-increment id, 201\n  DELETE /:id    → siler veya 404\n\nsrc/todo/index.ts — barrel export\ntests/todo.test.ts — 6 supertest testi, tümü geçiyor\n\nEvaluator v2 sonuçları:\n  ✅ Unit tests: tests/todo.test.ts — 6/6 (scoped execution)\n  ✅ Lint: SKIPPED (no config)\n  ✅ Anti-scope: temiz (MISSION.md dokunulmadı, express kullanıldı)\n  ✅ Memory files: 4/4\n  ✅ Consistency: 100%\n  ✅ Mission: 100%\n  ❌ tsc: runner dosyasında unused import (düzeltildi)\n  Verdict: revise → tsc fix sonrası accept olur\n\nAgent ayrıca express + supertest dependency'lerini ekledi.\nToplam test: 102+ passing\nKarar: D016\" 2>&1",
     "cwd": "C:\\Users\\Baris\\project-consciousness",
     "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T20-50-21-501Z_b73bfa97-e777-4768-91c1-3ad864099d38.jsonl",
     "persistAcrossSessions": false,
-    "startedAt": 1774304678149,
+    "startedAt": 1774305091443,
     "processType": "generic",
     "group": null,
     "readyPattern": null,
     "readyPort": null,
-    "pid": 92452
+    "pid": 117672
   }
 ]

@@ -40,27 +40,28 @@ Claude Code + GSD-2 ile çalışıyor.
 
 ## SCOPE
 
-**Ne inşa ediyoruz**: Basit bir Node.js CLI hesap makinesi
+**Ne inşa ediyoruz**: Basit bir TODO REST API (in-memory, express)
 
 **Stack**: TypeScript + Node.js
 
 **Başarı Kriterleri**:
 - npm test geçmeli
-- Toplama çalışmalı
-- Çıkarma çalışmalı
-- Çarpma çalışmalı
-- Bölme çalışmalı
+- GET /todos çalışmalı
+- POST /todos çalışmalı
+- DELETE /todos/:id çalışmalı
 
 ## ANTI-SCOPE
 
 **Dokunulmaz dosyalar**:
 - `MISSION.md`
-- `ARCHITECTURE.md`
 
 **Kilitli kararlar**:
-- D001 Dosya tabanlı hafıza sistemi
+- _(yok)_
 
 **Yasaklı bağımlılıklar**:
+- `fastify`
+- `koa`
+- `hapi`
 - `lodash`
 
 **Kabul edilemez kırılmalar**:
@@ -69,9 +70,8 @@ Claude Code + GSD-2 ile çalışıyor.
 ## SUCCESS CRITERIA
 
 1. npm test geçmeli
-2. Toplama çalışmalı
-3. Çıkarma çalışmalı
-4. Çarpma çalışmalı
-5. Bölme çalışmalı
+2. GET /todos çalışmalı
+3. POST /todos çalışmalı
+4. DELETE /todos/:id çalışmalı
 
-> Brief toplama tarihi: 2026-03-23T22:10:30.022Z
+> Brief toplama tarihi: 2026-03-23T22:27:35.982Z

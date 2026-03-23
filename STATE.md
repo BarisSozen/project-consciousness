@@ -2,28 +2,25 @@
 
 ## Current Phase: `reviewing`
 
-## Iteration: 9
+## Iteration: 10
 
 ## Active Tasks
-_yok — tüm planlanan görevler tamamlandı_
+_yok_
 
 ## Completed Tasks
 - [x] T001 — Proje iskeleti
 - [x] T003 — Agent Runner gerçek Claude Code entegrasyonu
 - [x] T004 — E2E integration test
-- [x] T-REAL-001 — docs/GLOSSARY.md agent ile oluşturuldu
-- [x] GÖREV-1 — BriefCollector (SCOPE / ANTI-SCOPE)
-- [x] GÖREV-2 — Evaluator v2 (gerçek kontroller + anti-scope)
+- [x] T-REAL-001 — docs/GLOSSARY.md
+- [x] GÖREV-1 — BriefCollector
+- [x] GÖREV-2 — Evaluator v2
 - [x] T-CALC-001 — Calculator entegrasyon testi
-- [x] T005 — Retry loop + escalation (gerçek readline kullanıcı etkileşimi)
-
-## Blocked
-_yok_
+- [x] T005 — Retry loop + escalation
+- [x] T-TODO-001 — TODO REST API (express, 6 test, evaluator: 6/7 checks ✅)
 
 ## Key Metrics
-- Kararlar: 15 (D001-D015)
-- Test: 96 passing (10 suites) — unit + E2E
+- Kararlar: 16 (D001-D016)
+- Test suites: 11 (96 unit/E2E + 9 calculator + 6 todo = 111 toplam)
 - TypeScript: strict, 0 error
-- Git commits: 9
 
-## Last Updated: 2026-03-24T01:25:00+03:00
+## Last Updated: 2026-03-24T01:32:00+03:00
