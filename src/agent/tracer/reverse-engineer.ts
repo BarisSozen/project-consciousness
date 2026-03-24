@@ -122,7 +122,7 @@ const PATH_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number }>
   { pattern: /\bentit(?:y|ies)\b/i, layer: 'model', weight: 7 },
   { pattern: /\bschema[s]?\b/i, layer: 'schema', weight: 7 },
   { pattern: /\bvalidat(?:or|ion)[s]?\b/i, layer: 'schema', weight: 6 },
-  { pattern: /\butil[s]?\b|\bhelper[s]?\b|\blib\b/i, layer: 'util', weight: 6 },
+  { pattern: /\butil[s]?\b|\bhelper[s]?\b|\blib\b/i, layer: 'util', weight: 8 },
   { pattern: /\bconfig\b|\bsettings?\b|\benv\b/i, layer: 'config', weight: 7 },
   { pattern: /\btest[s]?\b|\bspec[s]?\b|__tests__/i, layer: 'test', weight: 9 },
   { pattern: /\bmigrat(?:ion|e)[s]?\b|\bseed[s]?\b/i, layer: 'migration', weight: 8 },
@@ -548,11 +548,21 @@ export class ReverseEngineer {
     }
 
     // 2. Wrong direction: service imports controller, repo imports service
+    //    Skip type-only imports — they don't create runtime coupling
     const layerOrder: ArchLayer[] = ['route', 'controller', 'middleware', 'service', 'repository', 'model'];
     for (const edge of edges) {
+      // Type-only imports (import type { X }) are not real dependencies
+      if (edge.typeOnly) continue;
+
       const sourceClass = classifications.find(c => c.file === edge.source);
       const targetClass = classifications.find(c => c.file === edge.target);
       if (!sourceClass || !targetClass) continue;
+
+      // Skip test files and utils — they legitimately import from any layer
+      if (sourceClass.layer === 'test' || sourceClass.layer === 'util' ||
+          targetClass.layer === 'test' || targetClass.layer === 'util' ||
+          sourceClass.layer === 'type' || targetClass.layer === 'type' ||
+          sourceClass.layer === 'config' || targetClass.layer === 'config') continue;
 
       const sourceIdx = layerOrder.indexOf(sourceClass.layer);
       const targetIdx = layerOrder.indexOf(targetClass.layer);

@@ -220,6 +220,8 @@ export class StaticAnalyzer {
       const existing = edgeMap.get(key);
       if (existing) {
         existing.weight++;
+        // If ANY import on this edge is runtime (not type-only), edge is runtime
+        if (!imp.isTypeOnly) existing.typeOnly = false;
         for (const s of imp.symbols) {
           if (!existing.symbols.includes(s)) existing.symbols.push(s);
         }
@@ -229,6 +231,7 @@ export class StaticAnalyzer {
           target: resolved,
           symbols: [...imp.symbols],
           weight: 1,
+          typeOnly: imp.isTypeOnly,
         });
       }
     }

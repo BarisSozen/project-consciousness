@@ -428,6 +428,7 @@ export interface DependencyEdge {
   target: string;       // importee
   symbols: string[];
   weight: number;       // kaç kez referans var
+  typeOnly: boolean;    // all imports in this edge are type-only
 }
 
 /** Kullanılmayan veya kırık bağlantı */
