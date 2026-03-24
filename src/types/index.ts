@@ -519,3 +519,35 @@ export interface TracerReport {
   };
   timestamp: string;
 }
+
+// ============================================================
+// Project Plan Types (LLM-free planning)
+// ============================================================
+
+export interface ProjectPlan {
+  phases: ProjectPhase[];
+  metadata: {
+    stack: StackType;
+    brief: string;
+    detectedFeatures: string[];
+    hasExistingCode: boolean;
+    createdAt: string;
+  };
+}
+
+export interface ProjectPhase {
+  id: number;
+  name: string;
+  description: string;
+  tasks: PhaseTask[];
+  acceptanceCriteria: string[];
+  dependsOn: number[];
+  estimatedFiles: string[];
+}
+
+export interface PhaseTask {
+  id: string;           // "P1.T1"
+  title: string;
+  type: 'create' | 'modify' | 'config' | 'test' | 'document';
+  targetFiles: string[];
+}

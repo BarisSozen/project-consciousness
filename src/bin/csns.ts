@@ -74,26 +74,20 @@ function getProvider(config: OrchestratorConfig): LLMProvider | null {
 // ── Command Handlers ──────────────────────────────────────
 
 async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> {
-  if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
-    config = await ensureApiKey(config);
-    if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
-      console.error('  ❌ LLM API key required for /new. Run setup or set env vars.\n');
-      return;
-    }
-  }
-
-  // If no brief given, collect interactively
+  // ── Phase 1: Brief Collection (LLM gerektirmez) ──────────
   let resolvedBrief = brief.trim();
+  let collectedBrief: import('../types/index.js').Brief | undefined;
+
   if (!resolvedBrief) {
     const { BriefCollector } = await import('../brief/index.js');
     const collector = new BriefCollector();
-    const collected = await collector.collect();
+    collectedBrief = await collector.collect();
 
     const missionPath = join(PROJECT_ROOT, 'MISSION.md');
-    await collector.writeMission(collected, missionPath);
+    await collector.writeMission(collectedBrief, missionPath);
 
     // Create other memory files
-    await ensureMemoryFiles(collected.scope.stack);
+    await ensureMemoryFiles(collectedBrief.scope.stack);
 
     try {
       resolvedBrief = await readFile(missionPath, 'utf-8');
@@ -106,7 +100,46 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
     console.log('  📄 MISSION.md / ARCHITECTURE.md / DECISIONS.md / STATE.md\n');
   }
 
-  // Run orchestrator
+  // ── Phase 2: Plan Generation (LLM gerektirmez) ───────────
+  if (collectedBrief) {
+    const { PlanGenerator } = await import('../planner/index.js');
+    const planner = new PlanGenerator(PROJECT_ROOT);
+    const plan = await planner.generate(collectedBrief);
+
+    planner.printPlan(plan);
+    await planner.writePlan(plan);
+    console.log('  ✅ PLAN.md yazıldı\n');
+
+    // Kullanıcıya sor: devam mı, düzenle mi, bitir mi?
+    const answer = await askUser(
+      '  Ne yapmak istersin?\n' +
+      '    1. 🚀 Execute — LLM ile planı çalıştır (API key gerekir)\n' +
+      '    2. ✏️  Edit — PLAN.md\'yi düzenle, sonra tekrar gel\n' +
+      '    3. ✅ Done — Sadece planla, şimdilik yeterli\n' +
+      '  > '
+    );
+
+    if (answer.trim() === '2' || answer.trim().toLowerCase() === 'edit') {
+      console.log('  📝 PLAN.md dosyasını düzenle, sonra /new ile tekrar çalıştır.\n');
+      return;
+    }
+
+    if (answer.trim() === '3' || answer.trim().toLowerCase() === 'done') {
+      console.log('  ✅ Plan hazır. İstediğin zaman /new ile execution\'a geçebilirsin.\n');
+      return;
+    }
+  }
+
+  // ── Phase 3: LLM Execution (API key gerekir) ────────────
+  if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
+    config = await ensureApiKey(config);
+    if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
+      console.error('  ❌ LLM API key required for execution. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_HOST\n');
+      console.log('  💡 Plan ve proje dosyaları oluşturuldu — API key ayarlayıp /new ile devam edebilirsin.\n');
+      return;
+    }
+  }
+
   console.log('  🚀 Starting orchestration...\n');
   const { Orchestrator } = await import('../orchestrator/index.js');
   const orchestrator = new Orchestrator(config);
@@ -115,6 +148,16 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
   console.log(`\n  ✅ Session: ${session.sessionId}`);
   console.log(`  📊 Steps: ${session.steps.length}`);
   console.log(`  📌 Phase: ${session.finalState?.phase ?? 'unknown'}`);
+}
+
+async function askUser(prompt: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 }
 
 async function cmdAudit(config: OrchestratorConfig): Promise<void> {
@@ -467,6 +510,57 @@ async function ensureMemoryFiles(stack?: string): Promise<void> {
 
 // ── First-Run Setup ──────────────────────────────────────
 
+/** Read a line from stdin with masked echo (prints * for each character) */
+function askSecret(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write(prompt);
+    const buf: string[] = [];
+
+    if (!process.stdin.isTTY) {
+      // Non-TTY fallback: read one line without masking
+      const { createInterface: rlCreate } = require('node:readline');
+      const rl = rlCreate({ input: process.stdin, output: process.stdout });
+      rl.question('', (answer: string) => { rl.close(); resolve(answer); });
+      return;
+    }
+
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf-8');
+
+    const onData = (key: string) => {
+      const code = key.charCodeAt(0);
+      if (key === '\r' || key === '\n') {
+        // Enter
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve(buf.join(''));
+      } else if (code === 127 || code === 8) {
+        // Backspace
+        if (buf.length > 0) {
+          buf.pop();
+          process.stdout.write('\b \b');
+        }
+      } else if (code === 3) {
+        // Ctrl+C
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve('');
+      } else if (code >= 32) {
+        // Printable character
+        buf.push(key);
+        process.stdout.write('*');
+      }
+    };
+
+    process.stdin.on('data', onData);
+  });
+}
+
 async function ensureApiKey(config: OrchestratorConfig): Promise<OrchestratorConfig> {
   // Already has a key
   if (config.llmApiKey || process.env['OLLAMA_HOST']) return config;
@@ -532,8 +626,8 @@ async function ensureApiKey(config: OrchestratorConfig): Promise<OrchestratorCon
   const envKey = choice.trim() === '1' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
   const hint = choice.trim() === '1' ? 'sk-ant-...' : 'sk-...';
 
-  const apiKey = await ask(`  ${providerName} API key (${hint}): `);
   rl.close();
+  const apiKey = await askSecret(`  ${providerName} API key (${hint}): `);
 
   if (!apiKey.trim()) {
     console.log('  ⏭️  No key entered. Skipped.\n');
@@ -579,8 +673,9 @@ async function main(): Promise<void> {
   let config = buildConfig();
   const [command, ...rest] = process.argv.slice(2);
 
-  // Only run interactive setup if entering REPL (no command) or using /new
-  if (!command || command === 'new') {
+  // Only run interactive setup for non-interactive /new command
+  // REPL defers key setup to when /new or /trace is actually called
+  if (command === 'new') {
     config = await ensureApiKey(config);
   }
 
