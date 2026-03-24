@@ -25,6 +25,14 @@
     "./brief": {
       "types": "./dist/brief/index.d.ts",
       "import": "./dist/brief/index.js"
+    },
+    "./llm": {
+      "types": "./dist/llm/index.d.ts",
+      "import": "./dist/llm/index.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "import": "./dist/i18n/index.js"
     }
   },
   "bin": {
