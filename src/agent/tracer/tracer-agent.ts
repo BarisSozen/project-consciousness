@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import { StaticAnalyzer } from './static-analyzer.js';
 import { SemanticAnalyzer } from './semantic-analyzer.js';
 import { RuntimeTracer } from './runtime-tracer.js';
+import { ReverseEngineer } from './reverse-engineer.js';
+import type { AuditReport } from './reverse-engineer.js';
 import type {
   TracerReport,
   WiringIssue,
@@ -40,6 +42,7 @@ export interface TracerConfig {
     static?: boolean;    // default: true
     semantic?: boolean;  // default: true (if provider available)
     runtime?: boolean;   // default: true
+    audit?: boolean;     // default: true — reverse engineering audit
   };
   /** Log function */
   log?: (message: string) => void;
@@ -49,6 +52,7 @@ export class TracerAgent {
   private staticAnalyzer: StaticAnalyzer;
   private semanticAnalyzer: SemanticAnalyzer;
   private runtimeTracer: RuntimeTracer;
+  private reverseEngineer: ReverseEngineer;
   private config: TracerConfig;
   private log: (message: string) => void;
 
@@ -57,6 +61,7 @@ export class TracerAgent {
     this.staticAnalyzer = new StaticAnalyzer(config.projectRoot);
     this.semanticAnalyzer = new SemanticAnalyzer(config.llmProvider ?? null);
     this.runtimeTracer = new RuntimeTracer(config.projectRoot, config.port ?? 3000);
+    this.reverseEngineer = new ReverseEngineer(config.projectRoot, config.llmProvider ?? null);
     this.log = config.log ?? console.log;
   }
 
@@ -74,6 +79,7 @@ export class TracerAgent {
       static: this.config.layers?.static !== false,
       semantic: this.config.layers?.semantic !== false && !!this.config.llmProvider,
       runtime: this.config.layers?.runtime !== false,
+      audit: this.config.layers?.audit !== false,
     };
 
     // ── Katman 1: Static Analysis ──────────────────────────
@@ -152,7 +158,63 @@ export class TracerAgent {
       }
     }
 
-    // ── Birleştir ──────────────────────────────────────────
+    // ── Layer 4: Reverse Engineering Audit ──────────────────
+    let auditReport: AuditReport | undefined;
+
+    if (layers.audit) {
+      this.log('\n━━━ Layer 4: Reverse Engineering Audit ━━━');
+
+      // Read memory files for cross-checking
+      let memoryFiles: { mission?: string; architecture?: string; decisions?: string } | undefined;
+      try {
+        const { readFile: rf } = await import('node:fs/promises');
+        const { join: pj } = await import('node:path');
+        const [mission, architecture, decisions] = await Promise.all([
+          rf(pj(this.config.projectRoot, 'MISSION.md'), 'utf-8').catch(() => undefined),
+          rf(pj(this.config.projectRoot, 'ARCHITECTURE.md'), 'utf-8').catch(() => undefined),
+          rf(pj(this.config.projectRoot, 'DECISIONS.md'), 'utf-8').catch(() => undefined),
+        ]);
+        memoryFiles = { mission, architecture, decisions };
+      } catch { /* no memory files */ }
+
+      // Run full audit — pass static graph data to avoid re-scanning
+      const staticGraph = await this.staticAnalyzer.buildGraph();
+      auditReport = await this.reverseEngineer.audit(
+        staticGraph.imports,
+        staticGraph.exports,
+        staticGraph.edges,
+        memoryFiles
+      );
+
+      this.log(`  🏗️  ${auditReport.classifications.length} files classified`);
+      this.log(`  🔀 ${auditReport.dataFlows.length} data flow chains traced`);
+      this.log(`  ⚖️  ${auditReport.violations.length} architecture violations`);
+      this.log(`  📜 ${auditReport.decisionAudit.length} decisions audited (${auditReport.summary.decisionsImplemented} implemented)`);
+      this.log(`  🧩 ${auditReport.patterns.length} design patterns detected`);
+      this.log(`  💯 Health score: ${auditReport.summary.healthScore}/100`);
+
+      // Convert audit violations to WiringIssues for unified report
+      for (const v of auditReport.violations) {
+        runtimeIssues.push({
+          type: v.type === 'layer-skip' || v.type === 'wrong-direction' ? 'runtime-gap' :
+                v.type === 'decision-contradicted' ? 'type-mismatch' : 'missing-import',
+          severity: v.severity,
+          file: v.file,
+          detail: `[Audit] ${v.description}`,
+          suggestion: v.expectedBehavior,
+        });
+      }
+
+      // Log critical findings
+      for (const v of auditReport.violations.filter(v => v.severity === 'critical')) {
+        this.log(`  🚨 ${v.description}`);
+      }
+      for (const d of auditReport.decisionAudit.filter(d => d.status === 'contradicted')) {
+        this.log(`  ⚠️  CONTRADICTED: ${d.title}`);
+      }
+    }
+
+    // ── Merge ──────────────────────────────────────────
     const allIssues = this.deduplicateIssues([
       ...staticIssues,
       ...semanticIssues,
