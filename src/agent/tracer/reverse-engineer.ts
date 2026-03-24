@@ -110,6 +110,10 @@ export interface DetectedPattern {
 const PATH_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number }> = [
   { pattern: /\broute[sr]?\b/i, layer: 'route', weight: 8 },
   { pattern: /\bcontroller[s]?\b/i, layer: 'controller', weight: 8 },
+  { pattern: /\bresolver[s]?\b/i, layer: 'controller', weight: 9 },     // GraphQL resolvers = controller layer
+  { pattern: /\bmutation[s]?\b/i, layer: 'controller', weight: 7 },     // GraphQL mutations
+  { pattern: /\bquer(?:y|ies)\b/i, layer: 'controller', weight: 5 },    // GraphQL queries (low weight — ambiguous)
+  { pattern: /\bgateway\b/i, layer: 'route', weight: 8 },               // API gateway = route layer
   { pattern: /\bmiddleware[s]?\b/i, layer: 'middleware', weight: 9 },
   { pattern: /\bservice[s]?\b/i, layer: 'service', weight: 8 },
   { pattern: /\brepo(?:sitor(?:y|ies))?\b/i, layer: 'repository', weight: 8 },
@@ -123,19 +127,37 @@ const PATH_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number }>
   { pattern: /\btest[s]?\b|\bspec[s]?\b|__tests__/i, layer: 'test', weight: 9 },
   { pattern: /\bmigrat(?:ion|e)[s]?\b|\bseed[s]?\b/i, layer: 'migration', weight: 8 },
   { pattern: /\btype[s]?\b|\binterface[s]?\b|\bd\.ts$/i, layer: 'type', weight: 7 },
+  { pattern: /\bcomponent[s]?\b/i, layer: 'controller', weight: 4 },    // React components (low — UI layer)
+  { pattern: /\bhook[s]?\b/i, layer: 'service', weight: 5 },            // React hooks = service-like
+  { pattern: /\bprovider[s]?\b/i, layer: 'middleware', weight: 5 },     // React providers = middleware-like
+  { pattern: /\bpage[s]?\b|\/app\//i, layer: 'route', weight: 5 },      // Next.js pages/app = route
   { pattern: /\bindex\.(ts|js)$/, layer: 'entry', weight: 3 },
 ];
 
 /** Content signals for layer classification */
 const CONTENT_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number; signal: string }> = [
-  // Route/Controller
+  // Route/Controller — REST
   { pattern: /Router\(\)|app\.(get|post|put|delete|patch|use)\s*\(/, layer: 'route', weight: 7, signal: 'Express router/app usage' },
   { pattern: /\@(Get|Post|Put|Delete|Patch|Controller)\(/, layer: 'controller', weight: 8, signal: 'Decorator-based controller' },
   { pattern: /req\s*,\s*res\s*[,)]|request\s*,\s*response/, layer: 'controller', weight: 5, signal: 'req/res handler signature' },
 
+  // Route/Controller — GraphQL
+  { pattern: /\bResolver\b|\bresolvers?\s*[:=]\s*{/, layer: 'controller', weight: 8, signal: 'GraphQL resolver definition' },
+  { pattern: /\bMutation\b.*[:=]\s*{|\bmutations?\s*[:=]\s*{/i, layer: 'controller', weight: 7, signal: 'GraphQL mutation resolver' },
+  { pattern: /\bQuery\b.*[:=]\s*{|\bqueries\s*[:=]\s*{/i, layer: 'controller', weight: 7, signal: 'GraphQL query resolver' },
+  { pattern: /\bSubscription\b.*[:=]\s*{/, layer: 'controller', weight: 7, signal: 'GraphQL subscription resolver' },
+  { pattern: /buildSubgraphSchema|ApolloServer|ApolloGateway/i, layer: 'route', weight: 9, signal: 'Apollo server/gateway setup' },
+  { pattern: /gql\s*`|typeDefs|#graphql/, layer: 'schema', weight: 7, signal: 'GraphQL schema/typeDefs definition' },
+  { pattern: /__resolveReference|@key\(fields:/, layer: 'controller', weight: 8, signal: 'Apollo federation entity resolver' },
+
+  // Route — API Gateway / Federation
+  { pattern: /supergraph|IntrospectAndCompose|RemoteGraphQLDataSource/i, layer: 'route', weight: 9, signal: 'Apollo federation gateway' },
+  { pattern: /createProxyMiddleware|http-proxy-middleware/i, layer: 'route', weight: 8, signal: 'Proxy/gateway routing' },
+
   // Middleware
   { pattern: /\(req,\s*res,\s*next\)|\(req:\s*Request.*next:\s*NextFunction\)/, layer: 'middleware', weight: 8, signal: 'next() middleware signature' },
   { pattern: /authenticate|authorize|guard|protect/, layer: 'middleware', weight: 5, signal: 'Auth-related naming' },
+  { pattern: /correlat(?:ion)?[-_]?id|x-request-id/i, layer: 'util', weight: 6, signal: 'Correlation/request ID utility' },
 
   // Service
   { pattern: /class\s+\w+Service\b/, layer: 'service', weight: 8, signal: 'Service class naming' },
@@ -143,7 +165,7 @@ const CONTENT_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number
 
   // Repository/DAL
   { pattern: /class\s+\w+Repo(?:sitory)?\b/, layer: 'repository', weight: 8, signal: 'Repository class naming' },
-  { pattern: /\.find(?:One|Many|All|By)\b|\.create\b|\.update\b|\.delete\b|\.save\b/, layer: 'repository', weight: 5, signal: 'CRUD methods' },
+  { pattern: /\.find(?:One|Many|All|By)\b|\.create\b|\.update\b|\.delete\b|\.save\b/, layer: 'repository', weight: 3, signal: 'CRUD methods' },
   { pattern: /SELECT\s|INSERT\s|UPDATE\s|DELETE\s|FROM\s/i, layer: 'repository', weight: 7, signal: 'Raw SQL' },
   { pattern: /prisma\.|drizzle\.|knex\.|sequelize\.|mongoose\./, layer: 'repository', weight: 8, signal: 'ORM usage' },
 
@@ -158,6 +180,10 @@ const CONTENT_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number
   // Config
   { pattern: /process\.env\[|dotenv|\.config\(\)/, layer: 'config', weight: 5, signal: 'Env variable access' },
   { pattern: /export\s+(?:const|let)\s+(?:config|settings|options)\s*=/, layer: 'config', weight: 6, signal: 'Config export' },
+
+  // React/Frontend components
+  { pattern: /export\s+(?:default\s+)?function\s+\w+.*\)\s*{\s*return\s*[(<]|React\.FC|JSX\.Element/, layer: 'controller', weight: 4, signal: 'React component' },
+  { pattern: /use[A-Z]\w+\s*\(|useState|useEffect|useCallback|useMemo/, layer: 'service', weight: 4, signal: 'React hook (service-like)' },
 ];
 
 /** Architecture decision keywords to search in code */
@@ -322,7 +348,7 @@ export class ReverseEngineer {
     for (const routeFile of routeFiles) {
       const content = contents.get(routeFile.file) ?? '';
 
-      // Extract route definitions: app.get('/path', handler) or router.post('/path', ...)
+      // REST: app.get('/path', handler) or router.post('/path', ...)
       const routeRegex = /\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]/gi;
       let match: RegExpExecArray | null;
 
@@ -331,6 +357,40 @@ export class ReverseEngineer {
         const path = match[2]!;
         const trigger = `${method} ${path}`;
 
+        const chain = this.buildChainFromRoute(
+          trigger, routeFile, classifications, contents, edges ?? []
+        );
+        chains.push(chain);
+      }
+
+      // GraphQL: Query/Mutation resolver objects — only match actual code blocks, not comments
+      // Pattern: const resolvers = { Query: { users: async () => ... }, Mutation: { ... } }
+      const strippedContent = this.stripComments(content);
+      const gqlResolverBlockRegex = /(?:Query|Mutation)\s*:\s*{([^}]{5,})}/gs;
+      let gqlMatch: RegExpExecArray | null;
+      while ((gqlMatch = gqlResolverBlockRegex.exec(strippedContent)) !== null) {
+        const block = gqlMatch[0];
+        const isQuery = /^Query\s*:/m.test(block);
+        // Extract actual resolver function names (word followed by : or ( at start of line/after comma)
+        const resolverNameRegex = /(?:^|,)\s*(\w+)\s*(?::\s*(?:async\s*)?\(|[\(:])/gm;
+        let rnMatch: RegExpExecArray | null;
+        while ((rnMatch = resolverNameRegex.exec(gqlMatch[1]!)) !== null) {
+          const name = rnMatch[1]!;
+          if (['async', 'return', 'const', 'let', 'var', 'function', 'if', 'else', 'try', 'catch'].includes(name)) continue;
+          if (name.length < 2) continue;
+          const trigger = `${isQuery ? 'Query' : 'Mutation'} ${name}`;
+          const chain = this.buildChainFromRoute(
+            trigger, routeFile, classifications, contents, edges ?? []
+          );
+          chains.push(chain);
+        }
+      }
+
+      // GraphQL: exported resolver functions — export async function getUsers(parent, args, ctx)
+      const exportedResolverRegex = /export\s+(?:async\s+)?function\s+(\w+)\s*\(\s*(?:parent|root|_)\s*,\s*(?:args|_)/g;
+      while ((match = exportedResolverRegex.exec(strippedContent)) !== null) {
+        const name = match[1]!;
+        const trigger = `Resolver ${name}`;
         const chain = this.buildChainFromRoute(
           trigger, routeFile, classifications, contents, edges ?? []
         );
@@ -728,6 +788,46 @@ export class ReverseEngineer {
       }
     }
 
+    // GraphQL Federation
+    if (/buildSubgraphSchema|ApolloGateway|IntrospectAndCompose|__resolveReference/.test(allCode)) {
+      const fedFiles = [...contents.entries()]
+        .filter(([_, c]) => /buildSubgraphSchema|ApolloGateway|IntrospectAndCompose|__resolveReference|@key\(fields:/.test(c))
+        .map(([f]) => f);
+      if (fedFiles.length > 0) {
+        patterns.push({ name: 'GraphQL Federation', files: fedFiles, confidence: 0.9 });
+      }
+    }
+
+    // GraphQL Resolvers
+    if (/(?:Query|Mutation|Subscription)\s*[:=]\s*{/.test(allCode)) {
+      const resolverFiles = [...contents.entries()]
+        .filter(([_, c]) => /(?:Query|Mutation|Subscription)\s*[:=]\s*{/.test(c))
+        .map(([f]) => f);
+      if (resolverFiles.length > 0) {
+        patterns.push({ name: 'GraphQL Resolvers', files: resolverFiles, confidence: 0.9 });
+      }
+    }
+
+    // Event-Driven / Pub-Sub
+    if (/publish\(|subscribe\(|emit\(|EventEmitter|on\(['"]/.test(allCode)) {
+      const eventFiles = [...contents.entries()]
+        .filter(([_, c]) => /class\s+\w+(?:Publisher|Subscriber|EventBus)|\.publish\(|\.subscribe\(/.test(c))
+        .map(([f]) => f);
+      if (eventFiles.length > 0) {
+        patterns.push({ name: 'Event-Driven / Pub-Sub', files: eventFiles, confidence: 0.7 });
+      }
+    }
+
+    // Circuit Breaker
+    if (/circuit[-_]?breaker|CircuitBreaker|breaker\.fire/i.test(allCode)) {
+      const cbFiles = [...contents.entries()]
+        .filter(([_, c]) => /circuit[-_]?breaker|CircuitBreaker/i.test(c))
+        .map(([f]) => f);
+      if (cbFiles.length > 0) {
+        patterns.push({ name: 'Circuit Breaker', files: cbFiles, confidence: 0.8 });
+      }
+    }
+
     return patterns;
   }
 
@@ -809,17 +909,20 @@ Only report issues you're confident about. Empty array if none found.`;
     const decisionsImpl = decisionAudit.filter(d => d.status === 'implemented').length;
     const completeFlows = dataFlows.filter(f => f.complete).length;
 
-    // Health score: 100 base, subtract for issues
+    // Health score: 100 base, subtract for issues — scaled by project size
+    const fileCount = classifications.filter(c => c.layer !== 'test' && c.layer !== 'type').length;
+    const scaleFactor = Math.max(1, Math.log10(fileCount || 1)); // larger projects tolerate more violations
+    
     let health = 100;
-    health -= violations.filter(v => v.severity === 'critical').length * 15;
-    health -= violations.filter(v => v.severity === 'warning').length * 5;
-    health -= violations.filter(v => v.severity === 'info').length * 1;
-    health -= decisionAudit.filter(d => d.status === 'contradicted').length * 20;
-    health -= decisionAudit.filter(d => d.status === 'not-found').length * 5;
+    health -= violations.filter(v => v.severity === 'critical').length * (10 / scaleFactor);
+    health -= violations.filter(v => v.severity === 'warning').length * (3 / scaleFactor);
+    health -= violations.filter(v => v.severity === 'info').length * (0.5 / scaleFactor);
+    health -= decisionAudit.filter(d => d.status === 'contradicted').length * 15;
+    health -= decisionAudit.filter(d => d.status === 'not-found').length * 3;
     const incompleteRatio = dataFlows.length > 0
       ? (dataFlows.length - completeFlows) / dataFlows.length
       : 0;
-    health -= Math.round(incompleteRatio * 20);
+    health -= Math.round(incompleteRatio * 15);
 
     return {
       totalFiles: classifications.length,
@@ -915,5 +1018,16 @@ Only report issues you're confident about. Empty array if none found.`;
     if (lower.includes('login') || lower.includes('auth')) return 'authenticate';
     if (lower.includes('register') || lower.includes('signup')) return 'register user';
     return 'business logic';
+  }
+
+  /** Strip single-line and multi-line comments from source */
+  private stripComments(content: string): string {
+    // Remove block comments
+    let result = content.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Remove single-line comments
+    result = result.replace(/\/\/.*$/gm, '');
+    // Remove JSDoc asterisk lines
+    result = result.replace(/^\s*\*.*$/gm, '');
+    return result;
   }
 }
