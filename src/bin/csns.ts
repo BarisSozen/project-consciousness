@@ -319,13 +319,17 @@ function printHelp(): void {
 
 function printBanner(): void {
   console.log(`
-  ╔══════════════════════════════════════════════╗
-  ║   CSNS v${VERSION}                              ║
-  ║   Code-aware Self-correcting                 ║
-  ║   Never-forgetting System                    ║
-  ╚══════════════════════════════════════════════╝
+  \x1b[36m
+  ███╗   ███╗ █████╗ ███╗   ██╗██████╗  ██████╗ ███████╗██╗
+  ████╗ ████║██╔══██╗████╗  ██║██╔══██╗██╔═══██╗██╔════╝██║
+  ██╔████╔██║███████║██╔██╗ ██║██║  ██║██║   ██║███████╗██║
+  ██║╚██╔╝██║██╔══██║██║╚██╗██║██║  ██║██║   ██║╚════██║██║
+  ██║ ╚═╝ ██║██║  ██║██║ ╚████║██████╔╝╚██████╔╝███████║██║
+  ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚══════╝╚═╝
+  \x1b[0m
+  \x1b[2mCode-aware Self-correcting Never-forgetting System  v${VERSION}\x1b[0m
 
-  Type / for commands, /quit to exit.
+  Type \x1b[33m/\x1b[0m for commands, \x1b[33m/quit\x1b[0m to exit.
 `);
 }
 
