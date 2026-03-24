@@ -12,3 +12,5 @@ export type {
   DecisionAuditResult,
   ArchLayer,
 } from './reverse-engineer.js';
+export { SecurityScanner } from './security-scanner.js';
+export type { SecurityReport, SecurityFinding } from './security-scanner.js';

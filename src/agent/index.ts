@@ -11,3 +11,4 @@ export { StaticAnalyzer } from './tracer/index.js';
 export { SemanticAnalyzer } from './tracer/index.js';
 export { RuntimeTracer } from './tracer/index.js';
 export { ReverseEngineer } from './tracer/index.js';
+export { SecurityScanner } from './tracer/index.js';
