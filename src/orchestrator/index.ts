@@ -11,3 +11,4 @@ export { scaffoldProject } from './scaffold.js';
 export { SmartScaffold } from './smart-scaffold.js';
 export { EntityDetector } from './entity-detector.js';
 export { PRReviewer } from './pr-reviewer.js';
+export { VerifiedBuildPipeline, verifiedStep } from './verified-build.js';
