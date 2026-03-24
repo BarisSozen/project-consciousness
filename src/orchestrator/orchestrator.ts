@@ -10,6 +10,7 @@ import { AgentRunner } from '../agent/index.js';
 import { Planner } from './planner.js';
 import { Evaluator } from './evaluator.js';
 import { Escalator } from './escalator.js';
+import { t, setLocale } from '../i18n/index.js';
 import type { 
   OrchestratorConfig,
   TaskPlan,
@@ -37,9 +38,16 @@ export class Orchestrator {
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
+
+    // Set locale if configured
+    if (config.locale) {
+      setLocale(config.locale);
+    }
+
     this.memory = new MemoryLayer(config.projectRoot);
     this.agentRunner = new AgentRunner({
       workingDirectory: config.projectRoot,
+      binaryPath: config.agentBinary,
       timeout: 120_000,
       maxDepth: 3,
       log: (msg) => this.log(msg),
@@ -53,30 +61,30 @@ export class Orchestrator {
   // ── Ana Orkestrasyon Akışı ──────────────────────────────
 
   async run(brief: string): Promise<OrchestrationSession> {
-    this.log('🚀 Orkestrasyon başlıyor...');
+    this.log(t().orchestratorStarting);
     
-    // 1. Hafıza bütünlüğünü doğrula
+    // 1. Validate memory integrity
     await this.validateMemory();
 
     // 2. Hafıza snapshot'ı al
     const memory = await this.memory.optimizedSnapshot();
-    this.log(`📸 Hafıza snapshot alındı (hash: ${memory.hash}, optimized)`);
+    this.log(`${t().memorySnapshotTaken} (hash: ${memory.hash}, optimized)`);
 
-    // 3. Plan oluştur
-    this.log('📋 Plan oluşturuluyor...');
+    // 3. Create plan
+    this.log(t().planCreating);
     const plan = await this.planner.createPlan(brief, memory);
-    this.log(`✅ Plan hazır: ${plan.tasks.length} task, ${plan.executionOrder.length} adım`);
+    this.log(t().planReady(plan.tasks.length, plan.executionOrder.length));
 
     // 3.5 Task map'i doldur
     for (const task of plan.tasks) {
       this.taskMap.set(task.id, task);
     }
 
-    // 3.6 Agent runner sağlık kontrolü
+    // 3.6 Agent runner health check
     const health = await this.agentRunner.checkHealth();
-    this.log(`🏥 Agent runner: ${health.ready ? '✅' : '❌'} ${health.details}`);
+    this.log(t().agentRunnerHealth(health.ready, health.details));
     if (!health.ready) {
-      this.log('⚠️ Agent runner hazır değil — stub modda devam edilecek');
+      this.log('⚠️ Agent runner not ready — continuing in stub mode');
     }
 
     // 4. Planı kaydet — karar olarak logla
@@ -105,7 +113,7 @@ export class Orchestrator {
 
     for (let groupIdx = 0; groupIdx < plan.executionOrder.length; groupIdx++) {
       const group = plan.executionOrder[groupIdx]!;
-      this.log(`\n── Adım ${groupIdx + 1}/${plan.executionOrder.length}: [${group.join(', ')}] ──`);
+      this.log(t().stepHeader(groupIdx + 1, plan.executionOrder.length, group.join(', ')));
 
       // Her task grubunu yürüt (paralel veya sıralı)
       const tasks = group
@@ -137,13 +145,13 @@ export class Orchestrator {
     }
 
     await this.transitionPhase('reviewing');
-    this.log('\n🏁 Tüm task\'lar tamamlandı, review aşamasında.');
+    this.log(t().allTasksComplete);
   }
 
   // ── Task Execution — Gerçek Agent Runner Entegrasyonu ──
 
   private async executeTask(taskId: string): Promise<AgentResult | null> {
-    this.log(`  ⚡ Task ${taskId} başlatılıyor...`);
+    this.log(t().taskStarting(taskId));
     
     this.addStep({
       action: 'execute',
@@ -164,14 +172,12 @@ export class Orchestrator {
       };
     }
 
-    // Güncel memory snapshot al (her task öncesi, optimized)
     const memory = await this.memory.optimizedSnapshot();
-    this.log(`  📸 Memory snapshot (hash: ${memory.hash}, optimized)`);
+    this.log(`  ${t().memorySnapshotTaken} (hash: ${memory.hash})`);
 
-    // Agent runner ile çalıştır
     const result = await this.agentRunner.runTask(task, memory);
 
-    this.log(`  ${result.success ? '✅' : '❌'} Task ${taskId}: ${result.success ? 'başarılı' : 'başarısız'} (${result.duration}ms)`);
+    this.log(t().taskResult(taskId, result.success, result.duration));
 
     return result;
   }
@@ -188,21 +194,21 @@ export class Orchestrator {
       result: evaluation,
     });
 
-    this.log(`  📊 Değerlendirme: ${evaluation.verdict} (tutarlılık: ${evaluation.consistencyScore}, kalite: ${evaluation.qualityScore}, misyon: ${evaluation.missionAlignment})`);
+    this.log(t().evalResult(evaluation.verdict, evaluation.consistencyScore, evaluation.qualityScore, evaluation.missionAlignment));
 
     switch (evaluation.verdict) {
       case 'accept':
-        this.log(`  ✅ Kabul edildi.`);
+        this.log(t().accepted);
         await this.markTaskComplete(result);
         break;
 
       case 'revise':
-        this.log(`  🔄 Revize gerekli.`);
+        this.log(t().reviseNeeded);
         await this.handleRevision(result, evaluation);
         break;
 
       case 'escalate':
-        this.log(`  🚨 Eskalasyon gerekli!`);
+        this.log(t().escalationNeeded);
         const escResponse = await this.handleEscalation(evaluation);
         if (escResponse.action === 'continue') {
           await this.markTaskComplete(result);
@@ -245,33 +251,33 @@ export class Orchestrator {
     const maxRetries = this.config.maxRetries;
 
     if (retryCount >= maxRetries) {
-      this.log(`  🚨 Max retry (${maxRetries}) aşıldı — eskalasyon tetikleniyor`);
+      this.log(`  🚨 Max retry (${maxRetries}) exceeded — triggering escalation`);
       const response = await this.handleEscalation(evaluation, retryCount);
       
       if (response.action === 'continue') {
-        this.log('  ✅ Kullanıcı kabul etti, devam ediliyor');
+        this.log('  ✅ User accepted, continuing');
         await this.markTaskComplete(result);
       } else if (response.action === 'skip') {
-        this.log('  ⏭️ Kullanıcı atladı');
+        this.log('  ⏭️ User skipped');
         await this.markTaskSkipped(result);
       } else if (response.action === 'stop') {
-        this.log('  ⏹️ Kullanıcı durdurdu');
+        this.log('  ⏹️ User stopped');
         await this.transitionPhase('paused');
         throw new Error(`Orchestration paused by user at task ${result.taskId}`);
       }
       return;
     }
 
-    this.log(`  🔄 Retry ${retryCount + 1}/${maxRetries} — feedback ile agent'a gönderiliyor`);
+    this.log(`  🔄 Retry ${retryCount + 1}/${maxRetries} — sending to agent with feedback`);
 
     const task = this.taskMap.get(result.taskId);
     if (!task) {
-      this.log(`  ❌ Task tanımı bulunamadı, kabul ediliyor`);
+      this.log(`  ❌ Task definition not found, accepting`);
       await this.markTaskComplete(result);
       return;
     }
 
-    // Feedback'i task açıklamasına ekle — agent'ın ne düzeltmesi gerektiğini bilsin
+    const locale = t();
     const issueList = evaluation.issues
       .map(i => `- [${i.severity}] ${i.category}: ${i.description}`)
       .join('\n');
@@ -280,16 +286,16 @@ export class Orchestrator {
       ...task,
       description: `${task.description}
 
-⚠️ RETRY ${retryCount + 1}/${maxRetries} — ÖNCEKİ DENEME BAŞARISIZ
+${locale.retryHeader(retryCount + 1, maxRetries)}
 
-Geri bildirim: ${evaluation.feedback ?? 'Kalite kontrolleri geçemedi.'}
+${locale.retryFeedback}: ${evaluation.feedback ?? 'Quality checks failed.'}
 
-Tespit edilen sorunlar:
-${issueList || '- Genel kalite düşük'}
+${locale.retryIssues}:
+${issueList || '- General quality below threshold'}
 
-Skorlar: tutarlılık ${(evaluation.consistencyScore * 100).toFixed(0)}%, kalite ${(evaluation.qualityScore * 100).toFixed(0)}%, misyon ${(evaluation.missionAlignment * 100).toFixed(0)}%
+${locale.retryScores(evaluation.consistencyScore, evaluation.qualityScore, evaluation.missionAlignment)}
 
-BU SORUNLARI DÜZELT ve tekrar dene.`,
+${locale.retryFixInstruction}`,
     };
 
     this.addStep({
@@ -300,7 +306,7 @@ BU SORUNLARI DÜZELT ve tekrar dene.`,
     const memory = await this.memory.snapshot();
     const retryResult = await this.agentRunner.runTask(revisedTask, memory);
 
-    this.log(`  ${retryResult.success ? '✅' : '❌'} Retry ${retryCount + 1} sonuç: ${retryResult.success ? 'başarılı' : 'başarısız'}`);
+    this.log(`  ${retryResult.success ? '✅' : '❌'} Retry ${retryCount + 1}: ${retryResult.success ? 'succeeded' : 'failed'}`);
 
     // Yeni sonucu tekrar değerlendir
     const retryEval = await this.evaluator.evaluate(retryResult, memory);
@@ -314,7 +320,7 @@ BU SORUNLARI DÜZELT ve tekrar dene.`,
     this.log(`  📊 Retry ${retryCount + 1} eval: ${retryEval.verdict}`);
 
     if (retryEval.verdict === 'accept') {
-      this.log(`  ✅ Retry ${retryCount + 1} sonrası kabul edildi`);
+      this.log(`  ✅ Accepted after retry ${retryCount + 1}`);
       await this.markTaskComplete(retryResult);
     } else {
       // revise veya escalate → tekrar dene
@@ -335,7 +341,7 @@ BU SORUNLARI DÜZELT ve tekrar dene.`,
     });
 
     const response = await this.escalator.promptUser(escalation);
-    this.log(`  👤 Kullanıcı yanıtı: ${response.action}`);
+    this.log(t().userResponse(response.action));
     return response;
   }
 
@@ -363,7 +369,7 @@ BU SORUNLARI DÜZELT ve tekrar dene.`,
     state.iteration += 1;
     state.lastUpdated = new Date().toISOString();
     await this.memory.updateState(state);
-    this.log(`📌 Faz geçişi: ${phase}`);
+    this.log(t().phaseTransition(phase));
   }
 
   private async updateStateAfterTask(
@@ -381,9 +387,9 @@ BU SORUNLARI DÜZELT ve tekrar dene.`,
   private async validateMemory(): Promise<void> {
     const isValid = await this.memory.validateMissionIntegrity();
     if (!isValid) {
-      throw new Error('MISSION.md integrity check failed — temel bölümler eksik');
+      throw new Error(t().missionIntegrityFailed);
     }
-    this.log('✅ Hafıza bütünlüğü doğrulandı');
+    this.log(t().memoryValidated);
   }
 
   // ── Decision Logging ────────────────────────────────────

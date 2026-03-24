@@ -69,7 +69,7 @@ describe('Escalator', () => {
     const escalation = escalator.createEscalation(result);
     const formatted = escalator.formatForHuman(escalation);
     
-    expect(formatted).toContain('ESKALASYON');
+    expect(formatted).toContain('ESCALATION');
     expect(formatted).toContain('T001');
     expect(formatted).toContain('1.');
   });

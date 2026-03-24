@@ -14,43 +14,19 @@ import type {
   CodebaseContext,
 } from '../types/index.js';
 import { CodebaseReader } from './codebase-reader.js';
+import { t } from '../i18n/index.js';
 
-/** Agent tipine göre system-level talimatlar */
-const AGENT_PERSONAS: Record<string, string> = {
-  coder: `Sen deneyimli bir yazılım mühendisisin.
-Görevin: Verilen task'ı implement et, clean code yaz, testlerden geç.
-KURALLAR:
-- MISSION.md'deki amaçla %100 uyumlu kod yaz
-- ARCHITECTURE.md'deki mimari kararlara uy
-- DECISIONS.md'deki geçmiş kararlarla çelişme
-- Sadece tanımlanan task'ı yap, kapsamı aşma
-- Her dosya değişikliğini açıkla`,
-
-  reviewer: `Sen bir kod review uzmanısın.
-Görevin: Verilen kodu MISSION, ARCHITECTURE ve DECISIONS'a karşı denetle.
-KONTROL LİSTESİ:
-- Misyondan sapma var mı?
-- Mimari ihlal var mı?
-- Önceki kararlarla çelişki var mı?
-- Kapsam dışına çıkılmış mı?
-- Kod kalitesi yeterli mi?
-Her bulguyu [PASS/WARN/FAIL] etiketiyle raporla.`,
-
-  tester: `Sen bir QA mühendisisin.
-Görevin: Verilen kod için kapsamlı test yaz ve çalıştır.
-KURALLAR:
-- Edge case'leri kapsa
-- Vitest framework kullan
-- Her test neden var açıkla
-- Coverage raporla`,
-
-  documenter: `Sen bir teknik yazar/dokumentasyon uzmanısın.
-Görevin: Kodu, kararları ve mimariyi dokümante et.
-KURALLAR:
-- İnsan okunabilir markdown yaz
-- Örnekler ekle
-- ARCHITECTURE.md ile tutarlı ol`,
-};
+/** Agent type → i18n persona key */
+function getPersona(agentType: string): string {
+  const locale = t();
+  switch (agentType) {
+    case 'coder': return locale.coderPersona;
+    case 'reviewer': return locale.reviewerPersona;
+    case 'tester': return locale.testerPersona;
+    case 'documenter': return locale.documenterPersona;
+    default: return locale.coderPersona;
+  }
+}
 
 export class ContextBuilder {
   private codebaseReader: CodebaseReader;
@@ -69,39 +45,40 @@ export class ContextBuilder {
     agent: AgentConfig,
     codebaseContext?: CodebaseContext
   ): string {
-    const persona = AGENT_PERSONAS[agent.type] ?? AGENT_PERSONAS['coder']!;
+    const persona = getPersona(agent.type);
     const memoryContext = this.buildMemoryContext(memory);
     const taskDetail = this.buildTaskDetail(task);
     const outputFormat = this.buildOutputFormat(task);
+    const locale = t();
 
     let codebaseSection = '';
     if (codebaseContext && codebaseContext.files.length > 0) {
       codebaseSection = `
 ═══════════════════════════════════════════════════
-MEVCUT CODEBASE
+CODEBASE
 ═══════════════════════════════════════════════════
 
 ${codebaseContext.summary}
-${codebaseContext.truncated ? '\n⚠️ Token limiti nedeniyle bazı dosyalar kırpıldı.' : ''}
+${codebaseContext.truncated ? '\n⚠️ Some files truncated due to token limit.' : ''}
 `;
     }
 
     return `${persona}
 
 ═══════════════════════════════════════════════════
-PROJE HAFIZASI — Bu bağlam her şeyin üstündedir
+${locale.memoryContextTitle}
 ═══════════════════════════════════════════════════
 
 ${memoryContext}
 ${codebaseSection}
 ═══════════════════════════════════════════════════
-GÖREV
+${locale.taskSection}
 ═══════════════════════════════════════════════════
 
 ${taskDetail}
 
 ═══════════════════════════════════════════════════
-ÇIKTI FORMATI
+${locale.outputFormatSection}
 ═══════════════════════════════════════════════════
 
 ${outputFormat}
@@ -132,11 +109,12 @@ ${outputFormat}
    * MemoryLayer.optimizedSnapshot() ile geliyorsa zaten sıkıştırılmış.
    */
   buildMemoryContext(memory: MemorySnapshot): string {
+    const locale = t();
     const sections = [
-      this.section('MISSION (ASLA UNUTMA — Bu projenin varlık sebebi)', memory.files.mission),
-      this.section('ARCHITECTURE (Mimari kararlar — bunlara uy)', memory.files.architecture),
-      this.section('DECISIONS (Geçmiş kararlar — bunlarla çelişme)', memory.files.decisions),
-      this.section('STATE (Şu anki durum)', memory.files.state),
+      this.section(locale.missionLabel, memory.files.mission),
+      this.section(locale.architectureLabel, memory.files.architecture),
+      this.section(locale.decisionsLabel, memory.files.decisions),
+      this.section(locale.stateLabel, memory.files.state),
     ];
 
     const full = sections.join('\n\n');
@@ -184,8 +162,7 @@ ${outputFormat}
 **Kabul Kriterleri**:
 ${task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-⚠️ KAPSAM UYARISI: Sadece yukarıdaki kabul kriterlerini karşıla.
-Ekstra özellik ekleme, scope creep yapma.`;
+⚠️ ${t().scopeWarning}`;
   }
 
   private buildOutputFormat(task: TaskDefinition): string {

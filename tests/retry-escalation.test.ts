@@ -130,8 +130,8 @@ describe('Escalator v2', () => {
         retryCount: 3,
       };
       const formatted = escalator.formatForHuman(esc);
-      expect(formatted).toContain('Retry sayısı: 3');
-      expect(formatted).toContain('ESKALASYON');
+      expect(formatted).toContain('Retry: 3');
+      expect(formatted).toContain('ESCALATION');
       expect(formatted).toContain('T001');
     });
 

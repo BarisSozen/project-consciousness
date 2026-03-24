@@ -2,76 +2,62 @@
  * Orchestrator — Planner
  * 
  * Brief'ten task planı çıkarır.
- * Claude API kullanarak akıllı planlama yapar.
+ * LLM provider abstraction ile herhangi bir model kullanabilir.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import type { LLMProvider } from '../llm/types.js';
+import { resolveProvider } from '../llm/resolve.js';
+import { t } from '../i18n/index.js';
 import type { 
   TaskPlan, 
   MemorySnapshot,
   OrchestratorConfig 
 } from '../types/index.js';
 
-const PLANNER_SYSTEM_PROMPT = `Sen bir proje planlama uzmanısın. 
-Görevin: verilen brief ve mevcut proje hafızasını okuyarak bir task planı oluşturmak.
-
-KURALLAR:
-1. Her task atomik ve bağımsız olmalı (mümkün olduğunca)
-2. Bağımlılıklar açıkça belirtilmeli
-3. Paralel çalışabilecek task'lar gruplanmalı
-4. Her task'ın kabul kriterleri net olmalı
-5. Complexity tahmini gerçekçi olmalı
-6. MISSION.md'deki amaçla %100 uyumlu olmalı
-
-ÇIKTI FORMATI: JSON (TaskPlan tipinde)
-`;
-
 export class Planner {
-  private client: Anthropic;
-  private model: string;
+  private provider: LLMProvider | null;
 
   constructor(config: OrchestratorConfig) {
-    this.client = new Anthropic({ apiKey: config.claudeApiKey });
-    this.model = config.model;
+    this.provider = resolveProvider(config);
   }
 
   async createPlan(brief: string, memory: MemorySnapshot): Promise<TaskPlan> {
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 4096,
-      system: PLANNER_SYSTEM_PROMPT,
-      messages: [
+    if (!this.provider) {
+      throw new Error('LLM provider required for planning');
+    }
+
+    const response = await this.provider.chat(
+      [
         {
           role: 'user',
           content: `## Brief
 ${brief}
 
-## Mevcut MISSION.md
+## MISSION.md
 ${memory.files.mission}
 
-## Mevcut ARCHITECTURE.md
+## ARCHITECTURE.md
 ${memory.files.architecture}
 
-## Mevcut DECISIONS.md
+## DECISIONS.md
 ${memory.files.decisions}
 
-## Mevcut STATE.md
+## STATE.md
 ${memory.files.state}
 
 ---
 
-Bu brief ve mevcut hafıza dosyalarına dayanarak bir TaskPlan oluştur.
-Yanıtını sadece JSON olarak ver, başka açıklama ekleme.`,
+Create a TaskPlan based on this brief and the current memory files.
+Respond with JSON only, no extra explanation.`,
         },
       ],
-    });
+      {
+        system: t().plannerSystemPrompt,
+        maxTokens: 4096,
+      }
+    );
 
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map(block => block.text)
-      .join('');
-
-    return this.parsePlan(text);
+    return this.parsePlan(response.text);
   }
 
   private parsePlan(rawResponse: string): TaskPlan {

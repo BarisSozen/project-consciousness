@@ -1,19 +1,20 @@
 /**
- * Orchestrator — Evaluator (v2)
+ * Orchestrator — Evaluator (v3)
  * 
- * İki katmanlı değerlendirme:
- * 1. Gerçek kontroller: stack'e göre tsc/npm test/pytest/go build çalıştır
- * 2. Anti-scope kontrolü: MISSION.md'deki yasakları denetle
- * 3. LLM değerlendirmesi: tutarlılık, kalite, misyon uyumu (opsiyonel)
+ * Two-layer evaluation:
+ * 1. Real checks: run tsc/npm test/pytest/go build based on stack
+ * 2. Anti-scope check: enforce MISSION.md constraints
+ * 3. LLM evaluation: consistency, quality, mission alignment (optional)
  * 
- * D001: Dosya tabanlı hafıza — MISSION.md'den anti-scope okunur
- * D002: TypeScript stack — tsc/vitest varsayılan kontroller
+ * Now uses LLMProvider abstraction + i18n.
  */
 
 import { exec } from 'node:child_process';
 import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
-import Anthropic from '@anthropic-ai/sdk';
+import type { LLMProvider } from '../llm/types.js';
+import { resolveProvider } from '../llm/resolve.js';
+import { t } from '../i18n/index.js';
 import { BriefCollector } from '../brief/brief-collector.js';
 import type { 
   RealEvaluationResult,
@@ -56,65 +57,48 @@ const STACK_CHECKS: Record<StackType, StackCheck[]> = {
     { name: 'Go test', command: 'go test ./...', required: true },
     { name: 'Go vet', command: 'go vet ./...', required: false },
   ],
-  'other': [
-    // Genel: sadece dosya varlık kontrolü
-  ],
+  'other': [],
 };
 
-const EVALUATOR_SYSTEM_PROMPT = `Sen bir kalite ve tutarlılık denetçisisin.
-Görevin: Bir agent'ın çıktısını projenin hafızasına karşı değerlendirmek.
-
-Skorlar (0-1): consistencyScore, qualityScore, missionAlignment
-Sorun kategorileri: mission-drift, architecture-violation, decision-conflict, scope-creep
-
-Karar: accept (>0.7), revise (0.4-0.7), escalate (<0.4 veya critical)
-Çıktı: JSON (EvaluationResult)`;
-
 export class Evaluator {
-  private client: Anthropic | null;
-  private model: string;
+  private provider: LLMProvider | null;
   private escalationThreshold: number;
   private projectRoot: string;
 
   constructor(config: OrchestratorConfig) {
-    // API key yoksa LLM evaluation'ı atla, sadece gerçek kontrolleri çalıştır
-    this.client = config.claudeApiKey 
-      ? new Anthropic({ apiKey: config.claudeApiKey })
-      : null;
-    this.model = config.model;
+    this.provider = resolveProvider(config);
     this.escalationThreshold = config.escalationThreshold;
     this.projectRoot = config.projectRoot;
   }
 
   /**
-   * Tam değerlendirme: gerçek kontroller + anti-scope + LLM
+   * Full evaluation: real checks + anti-scope + LLM
    */
   async evaluate(
     agentResult: AgentResult,
     memory: MemorySnapshot
   ): Promise<RealEvaluationResult> {
-    // 1. Stack tespiti
+    // 1. Stack detection
     const stackDetected = await this.detectStack(memory);
 
-    // 2. Gerçek kontrolleri çalıştır (agent artifact'lerine scoped)
+    // 2. Run real checks
     const checks = await this.runStackChecks(stackDetected, agentResult.artifacts);
 
-    // 3. Anti-scope kontrolü
+    // 3. Anti-scope check
     const antiScopeViolations = this.checkAntiScope(agentResult, memory);
 
-    // 4. Skorları hesapla
+    // 4. Compute scores
     const scores = this.computeScores(checks, antiScopeViolations, agentResult);
 
-    // 5. Issues oluştur
+    // 5. Build issues
     const issues = this.buildIssues(checks, antiScopeViolations);
 
-    // 6. LLM değerlendirmesi (opsiyonel — API key yoksa atla)
+    // 6. LLM evaluation (optional)
     let llmFeedback: string | undefined;
-    if (this.client) {
+    if (this.provider) {
       try {
         const llmResult = await this.llmEvaluate(agentResult, memory);
         llmFeedback = llmResult.feedback;
-        // LLM issues'ları da ekle
         issues.push(...llmResult.issues);
       } catch {
         llmFeedback = 'LLM evaluation failed — real checks only.';
@@ -140,11 +124,9 @@ export class Evaluator {
   // ── Stack Detection ─────────────────────────────────────
 
   async detectStack(memory: MemorySnapshot): Promise<StackType> {
-    // 1. MISSION.md'den explicit stack bilgisi
     const missionStack = BriefCollector.parseStackType(memory.files.mission);
     if (missionStack) return missionStack;
 
-    // 2. Dosya tabanlı otomatik tespit
     const indicators: Array<{ file: string; stack: StackType }> = [
       { file: 'tsconfig.json', stack: 'typescript-node' },
       { file: 'package.json', stack: 'typescript-node' },
@@ -156,7 +138,6 @@ export class Evaluator {
     for (const { file, stack } of indicators) {
       try {
         await access(join(this.projectRoot, file));
-        // package.json varsa React mı kontrol et
         if (file === 'package.json' && stack === 'typescript-node') {
           try {
             const pkg = await readFile(join(this.projectRoot, 'package.json'), 'utf-8');
@@ -164,7 +145,7 @@ export class Evaluator {
           } catch { /* ignore */ }
         }
         return stack;
-      } catch { /* dosya yok, devam */ }
+      } catch { /* file not found, continue */ }
     }
 
     return 'other';
@@ -180,10 +161,8 @@ export class Evaluator {
     const results: CheckResult[] = [];
 
     for (const check of checks) {
-      // Düzeltme 1: Test komutu → sadece agent'ın ürettiği test dosyalarını çalıştır
       const command = this.resolveCommand(check, agentArtifacts);
 
-      // Düzeltme 2: Lint — config yoksa skip et
       if (check.name.includes('Lint')) {
         const lintResult = await this.runLintCheck(check.name, command);
         results.push(lintResult);
@@ -194,7 +173,7 @@ export class Evaluator {
       results.push(result);
     }
 
-    // Genel kontroller — her stack için
+    // Memory file existence checks
     results.push(await this.checkFileExists('MISSION.md'));
     results.push(await this.checkFileExists('ARCHITECTURE.md'));
     results.push(await this.checkFileExists('DECISIONS.md'));
@@ -203,17 +182,11 @@ export class Evaluator {
     return results;
   }
 
-  /**
-   * Test komutunu agent artifact'lerine göre daralt.
-   * Agent tests/calculator.test.ts ürettiyse → sadece onu çalıştır.
-   */
   private resolveCommand(check: StackCheck, artifacts: string[]): string {
-    // Test komutu değilse aynen döndür
     if (!check.name.toLowerCase().includes('test')) {
       return check.command;
     }
 
-    // Agent'ın ürettiği test dosyalarını bul
     const testFiles = artifacts.filter(a =>
       a.match(/\.(test|spec)\.(ts|tsx|js|jsx)$/) ||
       a.startsWith('tests/') ||
@@ -221,28 +194,20 @@ export class Evaluator {
     );
 
     if (testFiles.length === 0) {
-      return check.command; // fallback: tüm testler
+      return check.command;
     }
 
-    // Stack'e göre scoped test komutu
     if (check.command.includes('vitest') || check.command.includes('npm test')) {
       return `npx vitest run ${testFiles.join(' ')}`;
     }
     if (check.command.includes('pytest')) {
       return `pytest ${testFiles.join(' ')}`;
     }
-    if (check.command.includes('go test')) {
-      return check.command; // Go'da dosya bazlı test zor, paket bazlı kalır
-    }
 
     return check.command;
   }
 
-  /**
-   * Lint kontrolü — config dosyası yoksa SKIP (warn), FAIL değil.
-   */
   private async runLintCheck(name: string, command: string): Promise<CheckResult> {
-    // ESLint config var mı kontrol et
     const eslintConfigs = [
       'eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs',
       '.eslintrc.js', '.eslintrc.json', '.eslintrc.yml', '.eslintrc',
@@ -254,10 +219,9 @@ export class Evaluator {
         await access(join(this.projectRoot, cfg));
         hasConfig = true;
         break;
-      } catch { /* yok, devam */ }
+      } catch { /* not found */ }
     }
 
-    // Python lint (flake8) config kontrolü
     if (command.includes('flake8')) {
       try {
         await access(join(this.projectRoot, '.flake8'));
@@ -266,7 +230,7 @@ export class Evaluator {
         try {
           await access(join(this.projectRoot, 'setup.cfg'));
           hasConfig = true;
-        } catch { /* yok */ }
+        } catch { /* not found */ }
       }
     }
 
@@ -274,7 +238,7 @@ export class Evaluator {
       return {
         name,
         command,
-        passed: true, // skip = pass (warning olarak raporlanır)
+        passed: true,
         output: 'SKIPPED — lint config not found, skipping check',
       };
     }
@@ -317,7 +281,6 @@ export class Evaluator {
     const violations: AntiScopeViolation[] = [];
     const antiScope = BriefCollector.parseAntiScope(memory.files.mission);
 
-    // 1. Protected files — agent bu dosyalara dokunmuş mu?
     for (const protectedFile of antiScope.protectedFiles) {
       const touched = agentResult.artifacts.some(a => 
         a === protectedFile || a.endsWith(`/${protectedFile}`)
@@ -325,13 +288,12 @@ export class Evaluator {
       if (touched) {
         violations.push({
           type: 'protected-file',
-          detail: `Agent yasaklı dosyaya dokundu: ${protectedFile}`,
+          detail: t().protectedFileViolation(protectedFile),
           file: protectedFile,
         });
       }
     }
 
-    // 2. Forbidden deps — agent çıktısında yasaklı import var mı?
     for (const dep of antiScope.forbiddenDeps) {
       const inOutput = agentResult.output.toLowerCase().includes(dep.toLowerCase());
       const inArtifacts = agentResult.artifacts.some(a => 
@@ -340,17 +302,16 @@ export class Evaluator {
       if (inOutput || inArtifacts) {
         violations.push({
           type: 'forbidden-dep',
-          detail: `Yasaklı bağımlılık tespit edildi: ${dep}`,
+          detail: t().forbiddenDepViolation(dep),
         });
       }
     }
 
-    // 3. Breaking changes — keyword scan
     for (const bc of antiScope.breakingChanges) {
       if (agentResult.output.toLowerCase().includes(bc.toLowerCase())) {
         violations.push({
           type: 'breaking-change',
-          detail: `Kabul edilemez kırılma tespit edildi: ${bc}`,
+          detail: t().breakingChangeViolation(bc),
         });
       }
     }
@@ -365,17 +326,14 @@ export class Evaluator {
     violations: AntiScopeViolation[],
     agentResult: AgentResult
   ): { consistency: number; quality: number; mission: number } {
-    // Quality: gerçek kontrollerden
-    const requiredChecks = checks.filter(c => c.command); // komut çalıştırılan kontroller
+    const requiredChecks = checks.filter(c => c.command);
     const passedRequired = requiredChecks.filter(c => c.passed).length;
     const totalRequired = requiredChecks.length || 1;
     const quality = passedRequired / totalRequired;
 
-    // Mission alignment: anti-scope ihlalleri düşürür
     const violationPenalty = violations.length * 0.3;
     const mission = Math.max(0, agentResult.success ? 1.0 - violationPenalty : 0.2);
 
-    // Consistency: hafıza dosyaları mevcut mu
     const memoryChecks = checks.filter(c => c.name.startsWith('File:'));
     const memoryOk = memoryChecks.filter(c => c.passed).length;
     const consistency = memoryChecks.length > 0 ? memoryOk / memoryChecks.length : 0.5;
@@ -391,7 +349,6 @@ export class Evaluator {
   ): ConsistencyIssue[] {
     const issues: ConsistencyIssue[] = [];
 
-    // Başarısız kontroller
     for (const check of checks.filter(c => !c.passed)) {
       issues.push({
         severity: check.command ? 'warning' : 'info',
@@ -401,7 +358,6 @@ export class Evaluator {
       });
     }
 
-    // Anti-scope ihlalleri (hep critical)
     for (const v of violations) {
       issues.push({
         severity: 'critical',
@@ -421,12 +377,11 @@ export class Evaluator {
     llmFeedback?: string
   ): string {
     const parts: string[] = [];
-
     const passed = checks.filter(c => c.passed).length;
-    parts.push(`Checks: ${passed}/${checks.length} passed`);
+    parts.push(t().checksResult(passed, checks.length));
 
     if (violations.length > 0) {
-      parts.push(`⚠️ Anti-scope violations: ${violations.map(v => v.detail).join('; ')}`);
+      parts.push(t().antiScopeViolation(violations.map(v => v.detail).join('; ')));
     }
 
     const failed = checks.filter(c => !c.passed && c.command);
@@ -447,23 +402,20 @@ export class Evaluator {
     agentResult: AgentResult,
     memory: MemorySnapshot
   ): Promise<{ feedback?: string; issues: ConsistencyIssue[] }> {
-    if (!this.client) return { issues: [] };
+    if (!this.provider) return { issues: [] };
 
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 1024,
-      system: EVALUATOR_SYSTEM_PROMPT,
-      messages: [{
+    const response = await this.provider.chat(
+      [{
         role: 'user',
-        content: `Task: ${agentResult.taskId}\nSuccess: ${agentResult.success}\nOutput: ${agentResult.output.slice(0, 2000)}\nMISSION: ${memory.files.mission.slice(0, 1000)}\n\nKısa değerlendir (2-3 cümle).`,
+        content: `Task: ${agentResult.taskId}\nSuccess: ${agentResult.success}\nOutput: ${agentResult.output.slice(0, 2000)}\nMISSION: ${memory.files.mission.slice(0, 1000)}\n\nBriefly evaluate (2-3 sentences).`,
       }],
-    });
+      {
+        system: t().evaluatorSystemPrompt,
+        maxTokens: 1024,
+      }
+    );
 
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map(b => b.text).join('');
-
-    return { feedback: text.slice(0, 500), issues: [] };
+    return { feedback: response.text.slice(0, 500), issues: [] };
   }
 
   // ── Threshold Application ──────────────────────────────

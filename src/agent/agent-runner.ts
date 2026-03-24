@@ -11,6 +11,7 @@
 import { ProcessSpawner } from './process-spawner.js';
 import { ContextBuilder } from './context-builder.js';
 import { OutputParser } from './output-parser.js';
+import { t } from '../i18n/index.js';
 import type { 
   AgentConfig, 
   AgentResult, 
@@ -131,11 +132,11 @@ export class AgentRunner {
       return this.failResult(task.id, agentId, `No agent found for type: ${task.type}`);
     }
 
-    this.log(`  🤖 Agent [${agent.id}] task ${task.id} için başlatılıyor...`);
+    this.log(t().agentStarting(agent.id, task.id));
 
     // 1. Memory-aware prompt oluştur
     const prompt = this.contextBuilder.buildPrompt(task, memory, agent);
-    this.log(`  📝 Prompt hazır (${prompt.length} karakter)`);
+    this.log(t().promptReady(prompt.length));
 
     // 2. Claude CLI spawn et
     const startTime = Date.now();
@@ -154,7 +155,7 @@ export class AgentRunner {
 
       // 3. Timeout kontrolü
       if (processResult.timedOut) {
-        this.log(`  ⏰ Agent timeout! (${processResult.duration}ms)`);
+        this.log(t().agentTimeout(processResult.duration));
         return this.failResult(
           task.id, 
           agent.id, 
@@ -173,14 +174,14 @@ export class AgentRunner {
         processResult.duration
       );
 
-      this.log(`  ${result.success ? '✅' : '❌'} Agent [${agent.id}] tamamlandı (${processResult.duration}ms)`);
+      this.log(`  ${result.success ? '✅' : '❌'} ${t().agentComplete(agent.id, processResult.duration)}`);
       
       return result;
 
     } catch (error) {
       const duration = Date.now() - startTime;
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.log(`  💥 Agent [${agent.id}] hata: ${message}`);
+      this.log(t().agentError(agent.id, message));
       return this.failResult(task.id, agent.id, message, duration);
     }
   }
@@ -194,7 +195,7 @@ export class AgentRunner {
   ): Promise<AgentResult[]> {
     const results: AgentResult[] = [];
 
-    this.log(`  🔄 ${tasks.length} task paralel çalıştırılıyor (max: ${maxConcurrent})`);
+    this.log(t().parallelBatch(0, Math.ceil(tasks.length / maxConcurrent), tasks.map(t2 => t2.id).join(', ')));
 
     // Batch'ler halinde çalıştır
     for (let i = 0; i < tasks.length; i += maxConcurrent) {
@@ -202,7 +203,7 @@ export class AgentRunner {
       const batchNum = Math.floor(i / maxConcurrent) + 1;
       const totalBatches = Math.ceil(tasks.length / maxConcurrent);
       
-      this.log(`  📦 Batch ${batchNum}/${totalBatches}: [${batch.map(t => t.id).join(', ')}]`);
+      this.log(t().parallelBatch(batchNum, totalBatches, batch.map(t2 => t2.id).join(', ')));
 
       // Her batch'te memory'yi yeniden oku (önceki batch'in değişiklikleri yansısın)
       // İlk batch hariç — ilk batch zaten güncel memory'yi kullanıyor
@@ -214,7 +215,7 @@ export class AgentRunner {
 
       // Batch sonuçlarını logla
       const succeeded = batchResults.filter(r => r.success).length;
-      this.log(`  📊 Batch ${batchNum}: ${succeeded}/${batchResults.length} başarılı`);
+      this.log(t().batchResult(batchNum, succeeded, batchResults.length));
     }
 
     return results;

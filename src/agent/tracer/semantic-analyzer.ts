@@ -1,18 +1,10 @@
 /**
  * Semantic Analyzer — LLM ile Wiring Mantık Kontrolü
  *
- * Static analiz grafiğini ve dosya içeriklerini Claude'a göndererek:
- * - Service injection eksiklikleri
- * - Config/env wiring hataları
- * - Interface contract uyumsuzlukları
- * - Data flow kırıklıkları
- * tespit eder.
- *
- * Static analyzer "X, Y'yi import etmiyor" der.
- * Semantic analyzer "X, Y'yi import ETMELİ çünkü Z fonksiyonuna ihtiyacı var" der.
+ * LLMProvider abstraction ile herhangi bir model kullanabilir.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import type { LLMProvider } from '../../llm/types.js';
 import type {
   DependencyEdge,
   ExportNode,
@@ -20,37 +12,35 @@ import type {
   SemanticInsight,
 } from '../../types/index.js';
 
-const SEMANTIC_SYSTEM_PROMPT = `Sen deneyimli bir yazılım mimarısın. Görevin bir TypeScript projesinin bağlantı (wiring) sorunlarını tespit etmek.
+const SEMANTIC_SYSTEM_PROMPT = `You are an experienced software architect. Your task is to identify wiring issues in a TypeScript project.
 
-Sana verilecek:
-1. Import/export grafiği — hangi dosya kimi import ediyor
-2. Dosya özetleri — her dosyanın ne yaptığı
-3. Mimari kararlar — proje nasıl yapılandırılmış
+You will receive:
+1. Import/export graph — which file imports what
+2. File summaries — what each file does
+3. Architecture decisions — how the project is structured
 
-Şunları tespit et:
-- **injection-missing**: Bir service/handler başka bir service'e ihtiyaç duyuyor ama inject edilmemiş
-- **config-mismatch**: Env variable veya config değeri kullanılıyor ama tanımlı değil veya tip uyumsuz
-- **interface-drift**: İki modül arasındaki kontrat (parametre tipleri, return tipleri) uyumsuz
-- **handler-gap**: Route tanımlı ama handler bağlı değil, veya middleware zincirinde eksik halka
-- **data-flow-break**: Veri A→B→C akmalı ama B→C bağlantısı kopuk
+Detect:
+- **injection-missing**: A service/handler needs another service but it's not injected
+- **config-mismatch**: Env variable or config value used but undefined or type mismatch
+- **interface-drift**: Contract mismatch between two modules (parameter types, return types)
+- **handler-gap**: Route defined but handler not connected, or missing link in middleware chain
+- **data-flow-break**: Data should flow A→B→C but B→C connection is broken
 
-ÇIKTI: Sadece JSON array, her eleman:
+OUTPUT: JSON array only, each element:
 {
   "category": "injection-missing|config-mismatch|interface-drift|handler-gap|data-flow-break",
-  "description": "İnsan-okunabilir açıklama",
-  "files": ["dosya1.ts", "dosya2.ts"],
+  "description": "Human-readable description",
+  "files": ["file1.ts", "file2.ts"],
   "confidence": 0.0-1.0
 }
 
-Emin olmadığın şeyleri düşük confidence ile belirt. Yanlış pozitif vermektense sessiz kal.`;
+Mark uncertain findings with low confidence. Stay silent rather than produce false positives.`;
 
 export class SemanticAnalyzer {
-  private client: Anthropic | null;
-  private model: string;
+  private provider: LLMProvider | null;
 
-  constructor(apiKey?: string, model = 'claude-sonnet-4-20250514') {
-    this.client = apiKey ? new Anthropic({ apiKey }) : null;
-    this.model = model;
+  constructor(provider?: LLMProvider | null) {
+    this.provider = provider ?? null;
   }
 
   /**
@@ -62,26 +52,19 @@ export class SemanticAnalyzer {
     fileSummaries: Map<string, string>,
     architecture?: string
   ): Promise<SemanticInsight[]> {
-    if (!this.client) {
-      return []; // API key yoksa atla
+    if (!this.provider) {
+      return []; // No LLM provider, skip
     }
 
     const prompt = this.buildPrompt(edges, exports, fileSummaries, architecture);
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 4096,
-        system: SEMANTIC_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: prompt }],
-      });
+      const response = await this.provider.chat(
+        [{ role: 'user', content: prompt }],
+        { system: SEMANTIC_SYSTEM_PROMPT, maxTokens: 4096 }
+      );
 
-      const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map(b => b.text)
-        .join('');
-
-      return this.parseResponse(text);
+      return this.parseResponse(response.text);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       console.warn(`⚠️ Semantic analysis failed: ${msg}`);
@@ -164,27 +147,24 @@ export class SemanticAnalyzer {
   }
 
   private mapCategory(category: SemanticInsight['category']): WiringIssue['type'] {
-    switch (category) {
-      case 'injection-missing': return 'missing-import';
-      case 'config-mismatch': return 'type-mismatch';
-      case 'interface-drift': return 'type-mismatch';
-      case 'handler-gap': return 'missing-import';
-      case 'data-flow-break': return 'runtime-gap';
-    }
+    const map: Record<SemanticInsight['category'], WiringIssue['type']> = {
+      'injection-missing': 'missing-import',
+      'config-mismatch': 'type-mismatch',
+      'interface-drift': 'type-mismatch',
+      'handler-gap': 'missing-import',
+      'data-flow-break': 'runtime-gap',
+    };
+    return map[category];
   }
 
   private generateSuggestion(insight: SemanticInsight): string {
-    switch (insight.category) {
-      case 'injection-missing':
-        return `Eksik service'i constructor veya factory üzerinden inject et`;
-      case 'config-mismatch':
-        return `Config/env değerlerini kontrol et, .env.example ile karşılaştır`;
-      case 'interface-drift':
-        return `Ortak bir interface tanımla ve her iki tarafın da bunu implemente ettiğinden emin ol`;
-      case 'handler-gap':
-        return `Route tanımını ve handler bağlantısını kontrol et, middleware zincirini doğrula`;
-      case 'data-flow-break':
-        return `Veri akışındaki kırık noktayı bul, ara katman eksikse ekle`;
-    }
+    const map: Record<SemanticInsight['category'], string> = {
+      'injection-missing': 'Inject the missing service via constructor or factory',
+      'config-mismatch': 'Check config/env values, compare with .env.example',
+      'interface-drift': 'Define a shared interface and ensure both sides implement it',
+      'handler-gap': 'Check route definition and handler binding, verify middleware chain',
+      'data-flow-break': 'Find the broken point in data flow, add missing intermediate layer',
+    };
+    return map[insight.category];
   }
 }

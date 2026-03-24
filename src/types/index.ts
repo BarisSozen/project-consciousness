@@ -1,8 +1,8 @@
 /**
  * Project Consciousness — Type Definitions
- * 
- * Tüm sistemin type kontratları burada tanımlanır.
  */
+
+export type { LLMProviderType } from '../llm/types.js';
 
 // ============================================================
 // Memory Types
@@ -94,8 +94,22 @@ export interface TaskPlan {
 
 export interface OrchestratorConfig {
   projectRoot: string;
-  claudeApiKey: string;
-  model: string;
+  /** @deprecated Use llmProvider/llmModel instead. Kept for backward compat. */
+  claudeApiKey?: string;
+  /** @deprecated Use llmModel instead. */
+  model?: string;
+  /** LLM provider type: 'anthropic' | 'openai' | 'ollama' | 'custom' */
+  llmProvider?: import('./index.js').LLMProviderType;
+  /** LLM API key (provider-specific) */
+  llmApiKey?: string;
+  /** LLM model name */
+  llmModel?: string;
+  /** LLM base URL (for OpenAI-compatible or Ollama) */
+  llmBaseUrl?: string;
+  /** Agent CLI binary path (default: 'claude') */
+  agentBinary?: string;
+  /** Locale: 'en' | 'tr' */
+  locale?: import('../i18n/index.js').Locale;
   maxRetries: number;
   escalationThreshold: number; // 0-1, below this → escalate
   maxParallelAgents: number;

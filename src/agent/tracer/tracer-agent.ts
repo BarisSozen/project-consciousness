@@ -27,16 +27,18 @@ import type {
 
 export interface TracerConfig {
   projectRoot: string;
-  /** Anthropic API key (semantic analiz için) */
+  /** LLM provider instance (semantic analysis) */
+  llmProvider?: import('../../llm/types.js').LLMProvider | null;
+  /** @deprecated Use llmProvider instead */
   apiKey?: string;
-  /** Claude model (default: claude-sonnet-4-20250514) */
+  /** @deprecated Use llmProvider instead */
   model?: string;
   /** Server port for runtime tracing (default: 3000) */
   port?: number;
-  /** Katmanlar — hangileri çalışsın */
+  /** Layers — which ones should run */
   layers?: {
     static?: boolean;    // default: true
-    semantic?: boolean;  // default: true (API key varsa)
+    semantic?: boolean;  // default: true (if provider available)
     runtime?: boolean;   // default: true
   };
   /** Log function */
@@ -53,7 +55,7 @@ export class TracerAgent {
   constructor(config: TracerConfig) {
     this.config = config;
     this.staticAnalyzer = new StaticAnalyzer(config.projectRoot);
-    this.semanticAnalyzer = new SemanticAnalyzer(config.apiKey, config.model);
+    this.semanticAnalyzer = new SemanticAnalyzer(config.llmProvider ?? null);
     this.runtimeTracer = new RuntimeTracer(config.projectRoot, config.port ?? 3000);
     this.log = config.log ?? console.log;
   }
@@ -70,7 +72,7 @@ export class TracerAgent {
 
     const layers = {
       static: this.config.layers?.static !== false,
-      semantic: this.config.layers?.semantic !== false && !!this.config.apiKey,
+      semantic: this.config.layers?.semantic !== false && !!this.config.llmProvider,
       runtime: this.config.layers?.runtime !== false,
     };
 

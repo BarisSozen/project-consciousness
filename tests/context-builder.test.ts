@@ -87,7 +87,7 @@ describe('ContextBuilder', () => {
   it('should include agent persona for coder', () => {
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent);
     
-    expect(prompt).toContain('yazılım mühendisisin');
+    expect(prompt).toContain('experienced software engineer');
     expect(prompt).toContain('MISSION.md');
   });
 
@@ -95,14 +95,14 @@ describe('ContextBuilder', () => {
     const reviewer: AgentConfig = { id: 'reviewer', type: 'reviewer', capabilities: [] };
     const prompt = builder.buildPrompt(mockTask, mockMemory, reviewer);
     
-    expect(prompt).toContain('review uzmanısın');
+    expect(prompt).toContain('code review expert');
     expect(prompt).toContain('PASS/WARN/FAIL');
   });
 
   it('should include scope warning', () => {
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent);
     
-    expect(prompt).toContain('KAPSAM UYARISI');
+    expect(prompt).toContain('SCOPE WARNING');
     expect(prompt).toContain('scope creep');
   });
 
@@ -153,14 +153,14 @@ describe('ContextBuilder', () => {
 
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, codebaseContext);
 
-    expect(prompt).toContain('MEVCUT CODEBASE');
+    expect(prompt).toContain('CODEBASE');
     expect(prompt).toContain('AuthService');
     expect(prompt).toContain('auth-service.ts');
   });
 
   it('should not include codebase section when no context', () => {
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent);
-    expect(prompt).not.toContain('MEVCUT CODEBASE');
+    expect(prompt).not.toContain('CODEBASE');
   });
 
   it('should not include codebase section when empty files', () => {
@@ -171,7 +171,7 @@ describe('ContextBuilder', () => {
       summary: '',
     };
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, emptyContext);
-    expect(prompt).not.toContain('MEVCUT CODEBASE');
+    expect(prompt).not.toContain('CODEBASE');
   });
 
   it('should show truncation warning when codebase is truncated', () => {
@@ -191,8 +191,8 @@ describe('ContextBuilder', () => {
 
     const prompt = builder.buildPrompt(mockTask, mockMemory, mockAgent, truncatedContext);
 
-    expect(prompt).toContain('MEVCUT CODEBASE');
-    expect(prompt).toContain('Token limiti nedeniyle');
+    expect(prompt).toContain('CODEBASE');
+    expect(prompt).toContain('truncated due to token limit');
   });
 
   // ── buildCodebaseContext ────────────────────────────

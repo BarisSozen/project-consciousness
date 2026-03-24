@@ -8,6 +8,7 @@
  */
 
 import { createInterface } from 'node:readline';
+import { t } from '../i18n/index.js';
 import type { 
   EscalationRequest,
   EscalationResponse,
@@ -61,9 +62,7 @@ export class Escalator {
     const formatted = this.formatForHuman(escalation);
     console.log(formatted);
 
-    const answer = await this.ask(
-      '\n  Seçiminiz (1=devam / 2=atla / 3=durdur): '
-    );
+    const answer = await this.ask(t().escalationPrompt);
 
     return this.parseResponse(answer.trim());
   }
@@ -72,6 +71,7 @@ export class Escalator {
    * Eskalasyonu insan tarafından okunabilir formatta render eder
    */
   formatForHuman(escalation: EscalationRequest): string {
+    const locale = t();
     const urgencyEmoji = {
       blocking: '🚨',
       important: '⚠️',
@@ -79,22 +79,22 @@ export class Escalator {
     };
 
     const retryInfo = escalation.retryCount != null 
-      ? `\n🔄 Retry sayısı: ${escalation.retryCount}` 
+      ? `\n🔄 Retry: ${escalation.retryCount}` 
       : '';
 
     return `
-${urgencyEmoji[escalation.urgency]} ESKALASYON — Task: ${escalation.taskId}
+${urgencyEmoji[escalation.urgency]} ${locale.escalationTitle(escalation.taskId)}
 ${'═'.repeat(50)}
 
-📋 Sebep: ${escalation.reason}
+📋 ${locale.escalationReason}: ${escalation.reason}
 ${retryInfo}
-📝 Bağlam:
+📝 ${locale.escalationContext}:
 ${escalation.context}
 
-🔀 Seçenekler:
-  1. Devam et — bu çıktıyı kabul et ve ilerle
-  2. Atla — bu task'ı atla, sonrakine geç
-  3. Durdur — projeyi duraklat
+🔀 ${locale.escalationOptions}:
+  1. ${locale.escalationOptionContinue}
+  2. ${locale.escalationOptionSkip}
+  3. ${locale.escalationOptionStop}
 `;
   }
 
