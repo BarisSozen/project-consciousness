@@ -15,3 +15,5 @@ export { VerifiedBuildPipeline, verifiedStep } from './verified-build.js';
 export { DeployGenerator } from './deploy-generator.js';
 export { APIDocsGenerator } from './api-docs-generator.js';
 export { GitAuto } from './git-auto.js';
+export { SpecialistRouter } from './specialist-router.js';
+export type { SpecialistDomain, SpecialistProfile, RoutingDecision, FocusedContext } from './specialist-router.js';
