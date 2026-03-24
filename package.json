@@ -36,7 +36,8 @@
     }
   },
   "bin": {
-    "csns": "dist/bin/csns.js"
+    "csns": "dist/bin/csns.js",
+    "mandosi": "dist/bin/csns.js"
   },
   "files": [
     "dist",
