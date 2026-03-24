@@ -412,13 +412,109 @@ function printBanner(): void {
 
 // ── Interactive REPL ──────────────────────────────────────
 
+// ── Command Registry ────────────────────────────────────────
+
+interface CommandEntry {
+  cmd: string;
+  label: string;
+  description: string;
+  group: string;
+}
+
+const COMMANDS: CommandEntry[] = [
+  { cmd: '/new',         label: '🔨 /new [brief]',   description: 'Create a new project',                group: 'Build' },
+  { cmd: '/audit',       label: '🔍 /audit',          description: 'Full architecture audit (5 layers)',  group: 'Analyze' },
+  { cmd: '/review',      label: '🔍 /review',         description: 'Review staged git changes',           group: 'Analyze' },
+  { cmd: '/review --all',label: '🔍 /review --all',   description: 'Review all uncommitted changes',      group: 'Analyze' },
+  { cmd: '/trace',       label: '🔍 /trace',          description: 'Deep 4-layer trace',                  group: 'Analyze' },
+  { cmd: '/status',      label: '📊 /status',         description: 'Show STATE.md',                       group: 'Status' },
+  { cmd: '/log',         label: '📊 /log',            description: 'Show DECISIONS.md',                   group: 'Status' },
+  { cmd: '/health',      label: '📊 /health',         description: 'Check LLM + tools',                   group: 'Status' },
+  { cmd: '/help',        label: '⚙️  /help',          description: 'Full help text',                      group: 'Other' },
+  { cmd: '/quit',        label: '⚙️  /quit',          description: 'Exit',                                group: 'Other' },
+];
+
+/**
+ * Arrow-key interactive command selector.
+ * Tüm komutları listeler, yukarı/aşağı ile seçim yapılır, Enter ile çalıştırılır.
+ */
+async function interactiveCommandSelect(): Promise<string> {
+  const items = COMMANDS.filter(c => c.cmd !== '/quit'); // quit'i menüden çıkar
+  let selected = 0;
+
+  return new Promise((resolve) => {
+    const { stdin, stdout } = process;
+    const wasRaw = stdin.isRaw;
+
+    if (stdin.isTTY) {
+      stdin.setRawMode(true);
+    }
+    stdin.resume();
+
+    function render() {
+      // Cursor'u menü başına taşı
+      stdout.write(`\x1b[${items.length + 2}A\x1b[J`);
+
+      stdout.write('  ╭─── Select a command (↑↓ Enter) ───────────╮\n');
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]!;
+        const pointer = i === selected ? '\x1b[36m❯\x1b[0m' : ' ';
+        const highlight = i === selected ? '\x1b[1m' : '\x1b[2m';
+        const pad = item.description.padEnd(32);
+        stdout.write(`  │ ${pointer} ${highlight}${item.label.padEnd(18)} ${pad}\x1b[0m│\n`);
+      }
+      stdout.write('  ╰─────────────────────────────────────────────╯\n');
+    }
+
+    // İlk render için boş satırlar
+    stdout.write('\n'.repeat(items.length + 2));
+    render();
+
+    function onKey(key: Buffer) {
+      const s = key.toString();
+
+      if (s === '\x1b[A') { // Up
+        selected = (selected - 1 + items.length) % items.length;
+        render();
+      } else if (s === '\x1b[B') { // Down
+        selected = (selected + 1) % items.length;
+        render();
+      } else if (s === '\r' || s === '\n') { // Enter
+        cleanup();
+        resolve(items[selected]!.cmd);
+      } else if (s === '\x1b' || s === '\x03' || s === 'q') { // Esc, Ctrl+C, q
+        cleanup();
+        resolve('');
+      }
+    }
+
+    function cleanup() {
+      stdin.removeListener('data', onKey);
+      if (stdin.isTTY) {
+        stdin.setRawMode(wasRaw ?? false);
+      }
+    }
+
+    stdin.on('data', onKey);
+  });
+}
+
 async function repl(config: OrchestratorConfig): Promise<void> {
   printBanner();
+
+  const COMMAND_NAMES = COMMANDS.map(c => c.cmd);
 
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: '  csns> ',
+    completer: (line: string) => {
+      if (line.startsWith('/')) {
+        const hits = COMMAND_NAMES.filter(c => c.startsWith(line));
+        return [hits.length > 0 ? hits : COMMAND_NAMES, line];
+      }
+      return [[], line];
+    },
   });
 
   rl.prompt();
@@ -432,6 +528,22 @@ async function repl(config: OrchestratorConfig): Promise<void> {
     }
 
     try {
+      // "/" tek başına → interaktif seçim menüsü
+      if (input === '/' || input === '/?') {
+        rl.pause();
+        const selected = await interactiveCommandSelect();
+        rl.resume();
+
+        if (selected) {
+          console.log(`  ▸ ${selected}\n`);
+          // Seçilen komutu çalıştır (recursive)
+          rl.emit('line', selected);
+        } else {
+          rl.prompt();
+        }
+        return;
+      }
+
       if (input.startsWith('/new')) {
         await cmdNew(input.slice(4).trim(), config);
       } else if (input === '/audit') {
@@ -446,7 +558,7 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdLog();
       } else if (input === '/health') {
         await cmdHealth(config);
-      } else if (input === '/help' || input === '/?' || input === '/') {
+      } else if (input === '/help') {
         printInteractiveMenu();
       } else if (input === '/quit' || input === '/exit' || input === '/q') {
         console.log('\n  👋 Bye.\n');
