@@ -1,8 +1,10 @@
 # Project Consciousness
 
-> Sadece ne istediğini söyle, gerisini halleder.
+> Just say what you want. It handles the rest.
 
-Yapay zeka agent'ları sana "hangi framework?", "JWT mi session mı?", "database ne olsun?" diye sormak yerine — sen sadece ne istediğini anlat, sistem teknik kararları kendisi alsın.
+AI agents that don't ask you "which framework?" or "JWT or session?" — you describe what you need, the system makes the technical decisions itself.
+
+**Multi-model** · **Multi-language** · **Memory-first** · **Self-correcting**
 
 ---
 
@@ -11,242 +13,352 @@ Yapay zeka agent'ları sana "hangi framework?", "JWT mi session mı?", "database
 ```
 $ pc init
 
-📋 Ne yapmak istiyorsun?
-> URL shortener istiyorum, kayıt olsun, link tıklanınca 
-  redirect olsun, linkler süresi dolmasın
+📋 What do you want to build?
+> I want a URL shortener with user registration, redirect on click,
+  links never expire
 
-🔍 Analiz ediliyor...
-   ✅ JWT Auth (kayıt sistemi algılandı)
-   ✅ SQLite (hafif, yeterli)
+🔍 Analyzing...
+   ✅ JWT Auth (registration detected)
+   ✅ SQLite (lightweight, sufficient)
    ✅ REST API
    ✅ TypeScript + Node.js
 
-❓ Birkaç şey sormam gerekiyor:
+❓ A few product questions:
 
-   Kısaltılmış linkler herkese açık mı, sadece giriş yapanlara mı?
-   1. Herkese açık
-   2. Sadece giriş yapanlar
-   3. İkisi de (seçilebilir)
+   Are shortened links public or login-only?
+   1. Public
+   2. Login only
+   3. Both (configurable)
    > 1
 
-   Kullanıcılar birbirinin linklerini görebilir mi?
-   1. Evet, herkes görür
-   2. Hayır, sadece kendi
-   3. Opsiyonel paylaşım
+   Can users see each other's links?
+   1. Yes, everyone sees all
+   2. No, only their own
+   3. Optional sharing
    > 2
 
 ╔══════════════════════════════════════════════╗
-║         Plan Özeti                            ║
+║              Plan Summary                    ║
 ╚══════════════════════════════════════════════╝
 
- ✅ JWT Auth
- ✅ SQLite
+ ✅ JWT Auth        ❌ No frontend (API only)
+ ✅ SQLite          ❌ No payment system
  ✅ REST API
- ❌ Frontend yok (sadece API)
- ❌ Ödeme sistemi yok
-
-📋 Başarı Kriterleri:
-   • npm test geçmeli
-   • kayıt olsun
-   • link tıklanınca redirect olsun
-   • linkler süresi dolmasın
 
 $ pc run
 
-🚀 Orchestrator başlatıldı...
-📐 Mimari kararlar uygulanıyor...
+🚀 Orchestration starting...
 📦 Milestone M01: Foundation — DB schema, config
 📦 Milestone M02: Auth — register, login, JWT
 📦 Milestone M03: URL Shortener — CRUD, redirect
-🤖 Agent çalışıyor: M01...
-✅ M01 tamamlandı (tsc ✅, test ✅)
-🤖 Agent çalışıyor: M02...
-✅ M02 tamamlandı (tsc ✅, test ✅, endpoint ✅)
-🤖 Agent çalışıyor: M03...
-✅ M03 tamamlandı (tsc ✅, test ✅, endpoint ✅)
+🤖 Agent working: M01...
+✅ M01 completed (tsc ✅, test ✅)
+🤖 Agent working: M02...
+✅ M02 completed (tsc ✅, test ✅, endpoint ✅)
+🤖 Agent working: M03...
+✅ M03 completed (tsc ✅, test ✅, endpoint ✅)
 
-✅ Proje tamamlandı — 3/3 milestone başarılı
+✅ Project complete — 3/3 milestones successful
 ```
 
 ---
 
-## Kurulum
+## Install
 
 ```bash
-# Hemen dene (kurulum gereksiz)
-npx project-consciousness init
-
-# veya global kur
+npx project-consciousness init     # try instantly
+# or
 npm install -g project-consciousness
 pc init
 pc run
 ```
 
-**Gereksinimler:** Node.js 20+, [Anthropic API key](https://console.anthropic.com/)
+**Requirements:** Node.js 20+, at least one LLM provider
 
 ```bash
+# Pick one:
+export ANTHROPIC_API_KEY=sk-ant-...       # Claude
+export OPENAI_API_KEY=sk-...              # GPT-4o / o-series
+export OLLAMA_HOST=http://localhost:11434  # Local (Llama, Mistral, etc.)
+```
+
+---
+
+## Multi-Model Support
+
+Use any LLM provider — switch with a single env variable:
+
+| Provider | Env Variable | Models |
+|----------|-------------|--------|
+| **Anthropic** (default) | `ANTHROPIC_API_KEY` | Claude Sonnet, Opus, Haiku |
+| **OpenAI** | `OPENAI_API_KEY` | GPT-4o, o1, o3 |
+| **Ollama** | `OLLAMA_HOST` | Llama 3, Mistral, CodeLlama, any local model |
+| **OpenAI-compatible** | `OPENAI_API_KEY` + `LLM_BASE_URL` | Groq, Together, Azure, etc. |
+
+```bash
+# Auto-detect: whichever key exists is used
 export ANTHROPIC_API_KEY=sk-ant-...
+pc run "Build a todo API"
+
+# Explicit override
+LLM_PROVIDER=openai OPENAI_API_KEY=sk-... pc run "Build a todo API"
+
+# Local Ollama (no API key needed)
+LLM_PROVIDER=ollama pc run "Build a todo API"
+```
+
+### Programmatic
+
+```typescript
+import { createProvider } from 'project-consciousness/llm';
+
+// Auto-detect from env
+const provider = createProvider();
+
+// Or explicit
+const claude = createProvider({ provider: 'anthropic', apiKey: 'sk-ant-...' });
+const gpt = createProvider({ provider: 'openai', apiKey: 'sk-...', model: 'gpt-4o' });
+const local = createProvider({ provider: 'ollama', model: 'llama3' });
 ```
 
 ---
 
-## Ne Sorar, Ne Sormaz
+## Multi-Language (i18n)
 
-| Sana sorar ✅ | Kendisi karar verir ❌ |
-|---|---|
-| "Linkler herkese açık mı?" | JWT mi session mı? |
-| "Kullanıcılar birbirini görebilir mi?" | Hangi database? |
-| "Ödeme sistemi olacak mı?" | REST mi GraphQL mı? |
-| "Linkler süresi dolar mı?" | Hangi dosya yapısı? |
+All user-facing messages, prompts, and agent personas support multiple languages:
 
-Teknik kararları brief'inden otomatik çıkarır. Sadece **ürün kararlarını** — yani senin bilmen gereken şeyleri — sorar.
+```bash
+PC_LOCALE=en pc run "Build a todo API"     # English (default)
+PC_LOCALE=tr pc run "Todo API yap"         # Türkçe
+```
+
+Currently supported: **English** (`en`), **Turkish** (`tr`). Adding a new locale is one file — see `src/i18n/`.
 
 ---
 
-## Nasıl Çalışır
+## Agent CLI Abstraction
 
-Her şey 4 dosya üzerinden döner:
+The orchestrator spawns coding agents via CLI. Default is Claude Code, but any compatible CLI works:
 
-| Dosya | Ne İçerir | Kimin |
-|-------|-----------|-------|
-| `MISSION.md` | Ne yapılacak, ne yapılmayacak, başarı kriterleri | Senin (değişmez) |
-| `ARCHITECTURE.md` | Teknik kararlar — auth, DB, API stili | Sistem (otomatik) |
-| `DECISIONS.md` | Her karar, neden alındı, ne zaman | Log (append-only) |
-| `STATE.md` | Şu an hangi aşamada, ne bitti, ne kaldı | Canlı durum |
+```bash
+AGENT_BINARY=claude pc run "..."     # Claude Code (default)
+AGENT_BINARY=codex pc run "..."      # OpenAI Codex CLI
+AGENT_BINARY=aider pc run "..."      # Aider
+```
 
-Agent her göreve başlamadan önce bu 4 dosyayı okur. "Neden bu projeyi yapıyoruz?" sorusunun cevabını asla unutmaz.
+The agent receives a prompt via stdin and returns structured output. Any CLI that accepts `--print` mode or stdin prompts can be plugged in.
 
-### Akış
+---
+
+## How It Works
+
+### The 4-File Memory System
+
+Everything runs on 4 markdown files. Agents read them before every task and never forget why they exist.
+
+| File | What It Contains | Owned By |
+|------|-----------------|----------|
+| `MISSION.md` | What to build, what NOT to build, success criteria | You (immutable) |
+| `ARCHITECTURE.md` | Technical decisions — auth, DB, API style | System (auto) |
+| `DECISIONS.md` | Every decision, why it was made, when | Log (append-only) |
+| `STATE.md` | Current phase, what's done, what's left | Live status |
+
+### Architecture
 
 ```
-Sen: "URL shortener istiyorum..."
+You: "I want a URL shortener..."
  │
  ▼
 ┌─────────────────────────────────┐
 │  SmartBrief                      │
-│  1 soru → analiz → ürün soruları │
+│  1 question → analysis →         │
+│  product questions only          │
 │  → MISSION.md + ARCHITECTURE.md  │
 └──────────┬──────────────────────┘
            ▼
 ┌─────────────────────────────────┐
 │  Orchestrator                    │
 │  Plan → Milestone → Agent → Test │
-│  Başarısız? → 3x retry → sana   │
-│  sor                             │
+│  Failed? → 3x retry → ask you   │
 └──────────┬──────────────────────┘
            ▼
 ┌─────────────────────────────────┐
 │  Memory Layer                    │
-│  Her karar DECISIONS.md'ye       │
-│  Her adım STATE.md'ye            │
-│  Hiçbir şey kaybolmaz            │
+│  Every decision → DECISIONS.md   │
+│  Every step → STATE.md           │
+│  Nothing is lost                 │
 └─────────────────────────────────┘
 ```
 
-### Kontrol Mekanizması
+### What It Asks vs. What It Decides
 
-Kod yazıldıktan sonra gerçekten çalışıp çalışmadığı test edilir:
+| Asks you ✅ | Decides itself ❌ |
+|---|---|
+| "Are links public or private?" | JWT or session? |
+| "Can users see each other's data?" | Which database? |
+| "Will there be payments?" | REST or GraphQL? |
+| "Do links expire?" | File structure? |
 
-- **TypeScript derleme** — `tsc --noEmit` ile tip hataları
-- **Test çalıştırma** — `vitest run` / `pytest` / `go test`
-- **HTTP endpoint testi** — server başlatılır, gerçek HTTP isteği atılır
-- **Anti-scope kontrolü** — korunan dosyalara dokunulmuş mu? yasaklı bağımlılık eklenmiş mi?
+Technical decisions are inferred from your brief. Only **product decisions** — things you need to know — are asked.
 
-Başarısız olursa 3 kez otomatik düzeltme dener. Düzelmezse sana sorar.
+### Quality Control Pipeline
 
----
+After code is written, it's verified:
 
-## CLI Komutları
+1. **Type checking** — `tsc --noEmit`
+2. **Test execution** — `vitest run` / `pytest` / `go test`
+3. **HTTP endpoint testing** — server started, real HTTP requests sent
+4. **Anti-scope enforcement** — protected files touched? forbidden deps added?
 
-| Komut | Ne Yapar |
-|-------|----------|
-| `pc init` | Brief topla → 4 dosya oluştur |
-| `pc run` | Orchestrator'u başlat |
-| `pc run "Todo API yap"` | Brief ile direkt başlat |
-| `pc status` | STATE.md'yi göster |
-| `pc log` | DECISIONS.md'yi göster |
-| `pc help` | Yardım |
+Failed? 3x auto-retry with feedback → still failing? → escalation to you.
 
----
+### Tracer Agent — Data Flow Inspector
 
-## İzlenebilirlik
-
-Her şey loglanır, hiçbir şey silinmez:
-
-```markdown
-## D024 — Codebase Context: Task Öncesi Otomatik Dosya Okuma
-- **Tarih**: 2026-03-24T02:30:00+03:00
-- **Karar**: CodebaseReader ile src/ taranır, task'a göre ilgili dosyalar seçilir
-- **Gerekçe**: Agent mevcut kodu bilmeli, yoksa duplicate yazar
-- **Durum**: active
-```
-
-6 ay sonra "neden böyle yapmışız?" sorusunun cevabı → `DECISIONS.md`.
-
----
-
-## Geliştirici Notları
-
-### Programmatic Kullanım
+A specialized agent that "walks" through the project, tracking data flow and finding wiring problems:
 
 ```typescript
-import { SmartBrief } from 'project-consciousness/brief';
-import { MemoryLayer } from 'project-consciousness/memory';
-import { Orchestrator } from 'project-consciousness/orchestrator';
-import { CodebaseReader } from 'project-consciousness/agent';
+import { TracerAgent } from 'project-consciousness/agent';
 
-// Non-interactive brief (test / CI)
-const sb = new SmartBrief();
-const result = sb.runNonInteractive('URL shortener, kayıt olsun');
-console.log(result.decisions);  // { auth: 'jwt', database: 'sqlite', ... }
-console.log(result.antiScope);  // { forbiddenDeps: ['react', 'vue'], ... }
+const tracer = new TracerAgent({
+  projectRoot: process.cwd(),
+  llmProvider: provider,     // any LLMProvider
+  port: 3000,
+});
+
+const report = await tracer.run();
+// report.staticIssues     → dead exports, circular deps, phantom deps
+// report.semanticInsights → LLM-detected injection gaps, config mismatches
+// report.runtimeTraces    → HTTP probe results, handler chains, data flow
 ```
 
-### Proje Yapısı
+**3-layer analysis:**
+
+| Layer | What | How |
+|-------|------|-----|
+| **Static** | Import/export graph, dead code, circular deps, phantom deps | Regex scan of all `.ts` files |
+| **Semantic** | "This service should be injected but isn't" | LLM reasoning over graph + file summaries |
+| **Runtime** | Server started, HTTP probed, handler chain traced | Express middleware injection + HTTP probing |
+
+---
+
+## CLI Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `pc init` | Collect brief → create 4 memory files |
+| `pc run` | Start the orchestrator |
+| `pc run "Build a todo API"` | Start with inline brief |
+| `pc status` | Show STATE.md |
+| `pc log` | Show DECISIONS.md |
+| `pc help` | Help |
+
+---
+
+## Traceability
+
+Everything is logged, nothing is deleted:
+
+```markdown
+## D024 — Codebase Context: Pre-Task File Reading
+- **Date**: 2026-03-24T02:30:00+03:00
+- **Decision**: CodebaseReader scans src/, selects relevant files per task
+- **Rationale**: Agent must know existing code, otherwise writes duplicates
+- **Status**: active
+```
+
+6 months later: "why did we do it this way?" → `DECISIONS.md`.
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|------------|---------|
+| `ANTHROPIC_API_KEY` | Anthropic API key | — |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
+| `LLM_PROVIDER` | Force provider: `anthropic`, `openai`, `ollama` | auto-detect |
+| `LLM_MODEL` | Model name | provider default |
+| `LLM_BASE_URL` | Custom API base URL (OpenAI-compatible) | — |
+| `AGENT_BINARY` | Coding agent CLI binary | `claude` |
+| `PC_LOCALE` | Language: `en`, `tr` | `en` |
+
+### Programmatic
+
+```typescript
+import { Orchestrator } from 'project-consciousness/orchestrator';
+
+const orchestrator = new Orchestrator({
+  projectRoot: process.cwd(),
+  llmProvider: 'openai',
+  llmApiKey: 'sk-...',
+  llmModel: 'gpt-4o',
+  agentBinary: 'claude',
+  locale: 'en',
+  maxRetries: 3,
+  escalationThreshold: 0.4,
+  maxParallelAgents: 3,
+  verbose: true,
+});
+
+const session = await orchestrator.run('Build a REST API for todos');
+```
+
+---
+
+## Developer Notes
+
+### Project Structure
 
 ```
 src/
 ├── brief/           SmartBrief + BriefCollector
 ├── agent/           Agent Runner, Context Builder, Codebase Reader
+│   └── tracer/      Tracer Agent (static + semantic + runtime analysis)
 ├── orchestrator/    Planner, Evaluator, Escalator, Integration Evaluator
-├── memory/          4 dosya okuma/yazma
-├── types/           TypeScript interface'ler
+├── memory/          4-file read/write layer
+├── llm/             LLM provider abstraction (Anthropic, OpenAI, Ollama)
+├── i18n/            Internationalization (en, tr)
+├── types/           TypeScript interfaces
 └── bin/             CLI (pc init/run/status/log)
 ```
 
 ### Test
 
 ```bash
-npm test                              # 217 test, 18 suite
-npx vitest run tests/smart-brief.test.ts   # spesifik suite
-SKIP_E2E=1 npm test                   # Claude CLI testlerini atla
+npm test                                    # 229 tests, 19 suites
+npx vitest run tests/tracer-agent.test.ts   # specific suite
+SKIP_E2E=1 npm test                         # skip real CLI tests
 ```
 
-TypeScript strict mode, 0 error. Vitest ile test.
+TypeScript strict mode, 0 errors. Vitest for testing.
 
 ### Stack
 
-- TypeScript + Node.js
-- Claude API (orchestrator reasoning)
-- Claude Code (agent execution)
-- Vitest (test)
-- Dosya sistemi (hafıza — DB yok)
+- **TypeScript + Node.js** — strict mode, ESM
+- **LLM Providers** — Anthropic SDK, OpenAI API, Ollama REST (pluggable)
+- **Agent Execution** — Claude Code CLI (configurable)
+- **Testing** — Vitest (229 tests)
+- **Storage** — File system (markdown, no DB)
 
-### Tasarım İlkeleri
+### Design Principles
 
-1. **Memory-First** — Her karar dosyada iz bırakır
-2. **Fail-Safe** — Şüphe varsa insana sor
-3. **Append-Only** — DECISIONS.md asla düzenlenmez
-4. **Minimal** — Dosya sistemi yeterli, DB gereksiz
-5. **Human-Readable** — Tüm state markdown
+1. **Memory-First** — Every decision leaves a trace in files
+2. **Fail-Safe** — When in doubt, ask the human
+3. **Append-Only** — DECISIONS.md is never edited
+4. **Minimal** — File system is enough, no DB needed
+5. **Human-Readable** — All state is markdown
+6. **Provider-Agnostic** — Works with any LLM, any agent CLI
 
-### Katkı
+### Contributing
 
 1. Fork → branch → test → PR
-2. `npm test` geçmeli
-3. `npx tsc --noEmit` 0 hata
+2. `npm test` must pass
+3. `npx tsc --noEmit` must show 0 errors
 4. Conventional commits (`feat:`, `fix:`, `docs:`)
 
-## Lisans
+## License
 
 MIT — [Baris Sozen](https://github.com/BarisSozen)
