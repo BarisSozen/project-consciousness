@@ -5,3 +5,8 @@ export { ContextBuilder } from './context-builder.js';
 export { OutputParser } from './output-parser.js';
 export { ArchitectAgent } from './architect.js';
 export { CodebaseReader } from './codebase-reader.js';
+export { TracerAgent } from './tracer/index.js';
+export type { TracerConfig } from './tracer/index.js';
+export { StaticAnalyzer } from './tracer/index.js';
+export { SemanticAnalyzer } from './tracer/index.js';
+export { RuntimeTracer } from './tracer/index.js';

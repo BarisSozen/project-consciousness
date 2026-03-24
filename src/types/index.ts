@@ -141,7 +141,7 @@ export interface EscalationResponse {
 
 export interface AgentConfig {
   id: string;
-  type: 'coder' | 'reviewer' | 'tester' | 'documenter';
+  type: 'coder' | 'reviewer' | 'tester' | 'documenter' | 'tracer';
   capabilities: string[];
 }
 
@@ -385,4 +385,122 @@ export interface IntegrationTestResult {
   failed: number;
   total: number;
   summary: string;
+}
+
+// ============================================================
+// Tracer Agent Types
+// ============================================================
+
+/** Bir dosyadaki import ifadesi */
+export interface ImportEdge {
+  from: string;         // importing file (relative path)
+  to: string;           // imported module (resolved relative path or package name)
+  symbols: string[];    // imported symbols: ['Router', 'default', '*']
+  isTypeOnly: boolean;  // import type { ... }
+  line: number;
+}
+
+/** Bir dosyadaki export ifadesi */
+export interface ExportNode {
+  file: string;         // relative path
+  symbol: string;       // exported name
+  kind: 'function' | 'class' | 'const' | 'type' | 'interface' | 'enum' | 're-export' | 'default';
+  line: number;
+}
+
+/** Static analiz: import/export graph */
+export interface DependencyEdge {
+  source: string;       // importer
+  target: string;       // importee
+  symbols: string[];
+  weight: number;       // kaç kez referans var
+}
+
+/** Kullanılmayan veya kırık bağlantı */
+export interface WiringIssue {
+  type: 'dead-export' | 'missing-import' | 'circular-dep' | 'type-mismatch' | 'unused-dep' | 'phantom-dep' | 'runtime-gap';
+  severity: 'critical' | 'warning' | 'info';
+  file: string;
+  symbol?: string;
+  detail: string;
+  suggestion?: string;
+}
+
+/** LLM semantic analiz sonucu */
+export interface SemanticInsight {
+  category: 'injection-missing' | 'config-mismatch' | 'interface-drift' | 'handler-gap' | 'data-flow-break';
+  description: string;
+  files: string[];
+  confidence: number;   // 0-1
+}
+
+/** Runtime'da yakalanan fonksiyon çağrısı */
+export interface RuntimeCall {
+  timestamp: number;
+  file: string;
+  function: string;
+  args?: string;        // serialized, first 200 chars
+  returnType?: string;
+  duration: number;     // ms
+  caller?: string;      // who invoked this
+}
+
+/** Runtime'da yakalanan HTTP request/response */
+export interface RuntimeHttpEvent {
+  timestamp: number;
+  method: string;
+  path: string;
+  status: number;
+  requestBody?: string;
+  responseBody?: string;
+  duration: number;
+  handlerChain: string[];  // middleware → route handler → service chain
+}
+
+/** Runtime trace — bir request'in uçtan uca yolculuğu */
+export interface RequestTrace {
+  id: string;
+  httpEvent: RuntimeHttpEvent;
+  calls: RuntimeCall[];
+  dataFlow: DataFlowStep[];
+  gaps: WiringIssue[];     // bu trace'de tespit edilen sorunlar
+}
+
+/** Data flow adımı — verinin bir katmandan diğerine geçişi */
+export interface DataFlowStep {
+  order: number;
+  layer: 'controller' | 'middleware' | 'service' | 'repository' | 'model' | 'util' | 'external';
+  file: string;
+  function: string;
+  dataIn?: string;     // gelen veri tipi/şekli
+  dataOut?: string;    // çıkan veri tipi/şekli
+  transform?: string;  // ne dönüşüm yapılıyor
+}
+
+/** Tracer agent'ın tam raporu */
+export interface TracerReport {
+  /** Proje dosya/import grafiği */
+  graph: {
+    nodes: ExportNode[];
+    edges: DependencyEdge[];
+    entryPoints: string[];
+  };
+  /** Static analiz sorunları */
+  staticIssues: WiringIssue[];
+  /** LLM semantic analiz */
+  semanticInsights: SemanticInsight[];
+  /** Runtime trace'ler (her test edilen endpoint için) */
+  runtimeTraces: RequestTrace[];
+  /** Tüm sorunların birleştirilmiş listesi */
+  allIssues: WiringIssue[];
+  /** Özet istatistikler */
+  summary: {
+    totalFiles: number;
+    totalEdges: number;
+    totalIssues: number;
+    criticalCount: number;
+    warningCount: number;
+    coveragePercent: number;  // trace edilen dosyaların yüzdesi
+  };
+  timestamp: string;
 }

@@ -1,6 +1,6 @@
 {
   "name": "project-consciousness",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Multi-agent orchestration with persistent memory — agents never forget why they exist",
   "type": "module",
   "main": "dist/index.js",
@@ -76,11 +76,11 @@
     "prettier": "^3.4.0",
     "supertest": "^7.2.2",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
+    "typescript": "^5.9.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.80.0",
     "chalk": "^5.4.0",
     "date-fns": "^4.1.0",
     "express": "^5.2.1",
