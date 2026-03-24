@@ -61,6 +61,9 @@ export interface ArchitectureViolation {
   file: string;
   evidence: string;
   expectedBehavior: string;
+  /** If the violation matches a known architectural pattern or explicit decision, it's acknowledged — not a bug */
+  acknowledged: boolean;
+  acknowledgeReason?: string;
 }
 
 export interface DecisionAuditResult {
@@ -239,18 +242,18 @@ export class ReverseEngineer {
     // 3. Trace data flow chains
     const dataFlows = this.traceDataFlows(classifications, fileContents, _imports, edges);
 
-    // 4. Detect architecture violations
-    const violations = this.detectViolations(classifications, edges ?? [], dataFlows);
+    // 4. Detect patterns (before violations — patterns inform acknowledgement)
+    const patterns = this.detectPatterns(classifications, fileContents);
 
-    // 5. Audit decisions against actual code
+    // 5. Detect architecture violations (pattern-aware + architecture-aware)
+    const violations = this.detectViolations(classifications, edges ?? [], dataFlows, patterns, memoryFiles?.architecture);
+
+    // 6. Audit decisions against actual code
     const decisionAudit = this.auditDecisions(
       memoryFiles?.decisions ?? '',
       memoryFiles?.architecture ?? '',
       fileContents
     );
-
-    // 6. Detect patterns
-    const patterns = this.detectPatterns(classifications, fileContents);
 
     // 7. LLM deep audit (optional)
     let llmViolations: ArchitectureViolation[] = [];
@@ -529,45 +532,71 @@ export class ReverseEngineer {
   private detectViolations(
     classifications: FileClassification[],
     edges: DependencyEdge[],
-    dataFlows: DataFlowChain[]
+    dataFlows: DataFlowChain[],
+    detectedPatterns?: DetectedPattern[],
+    architecture?: string
   ): ArchitectureViolation[] {
     const violations: ArchitectureViolation[] = [];
 
+    // Pre-compute: is this a GraphQL project? (adjusts expectations)
+    const isGraphQL = (detectedPatterns ?? []).some(p =>
+      p.name === 'GraphQL Resolvers' || p.name === 'GraphQL Federation'
+    );
+    // Pre-compute: has explicit "no service layer" decision?
+    const archLower = (architecture ?? '').toLowerCase();
+    const hasNoServiceDecision = archLower.includes('no service layer') ||
+      archLower.includes('thin resolver') ||
+      archLower.includes('resolver-first') ||
+      archLower.includes('direct db');
+
     // 1. Layer skip: controller → repository (skipping service)
     for (const flow of dataFlows) {
+      // Skip flows from test files
+      const flowFile = flow.steps[0]?.file ?? '';
+      if (this.isTestFile(flowFile)) continue;
+
+      // Skip health/ready/live/metrics endpoints — intentionally minimal
+      if (this.isInfraEndpoint(flow.trigger)) continue;
+
       if (flow.gaps.some(g => g.includes('service layer skipped'))) {
+        // Acknowledge if GraphQL project or explicit decision
+        const acknowledged = isGraphQL || hasNoServiceDecision;
         violations.push({
           type: 'layer-skip',
-          severity: 'warning',
+          severity: acknowledged ? 'info' : 'warning',
           description: `${flow.trigger}: controller accesses repository directly, service layer skipped`,
-          file: flow.steps[0]?.file ?? 'unknown',
+          file: flowFile,
           evidence: flow.gaps.join('; '),
           expectedBehavior: 'Controller → Service → Repository (3-tier architecture)',
+          acknowledged,
+          acknowledgeReason: acknowledged
+            ? (isGraphQL ? 'GraphQL resolver pattern — direct DB access is common in resolver-first architecture' : 'Explicit architectural decision')
+            : undefined,
         });
       }
     }
 
-    // 2. Wrong direction: service imports controller, repo imports service
-    //    Skip type-only imports — they don't create runtime coupling
+    // 2. Wrong direction: lower layer imports higher layer
     const layerOrder: ArchLayer[] = ['route', 'controller', 'middleware', 'service', 'repository', 'model'];
     for (const edge of edges) {
-      // Type-only imports (import type { X }) are not real dependencies
       if (edge.typeOnly) continue;
 
       const sourceClass = classifications.find(c => c.file === edge.source);
       const targetClass = classifications.find(c => c.file === edge.target);
       if (!sourceClass || !targetClass) continue;
 
-      // Skip test files and utils — they legitimately import from any layer
-      if (sourceClass.layer === 'test' || sourceClass.layer === 'util' ||
-          targetClass.layer === 'test' || targetClass.layer === 'util' ||
-          sourceClass.layer === 'type' || targetClass.layer === 'type' ||
-          sourceClass.layer === 'config' || targetClass.layer === 'config') continue;
+      // Skip: test, util, type, config, entry point, migration — they import freely
+      if (this.isExemptLayer(sourceClass.layer) || this.isExemptLayer(targetClass.layer)) continue;
+      if (this.isEntryPointFile(edge.source)) continue;
+      // Also skip by filename — test files sometimes misclassified by content
+      if (this.isTestFile(edge.source) || this.isTestFile(edge.target)) continue;
+
+      // Skip React component cross-imports — components importing components is normal
+      if (edge.source.includes('component') && edge.target.includes('component')) continue;
 
       const sourceIdx = layerOrder.indexOf(sourceClass.layer);
       const targetIdx = layerOrder.indexOf(targetClass.layer);
 
-      // Lower layer importing higher layer = wrong direction
       if (sourceIdx >= 0 && targetIdx >= 0 && sourceIdx > targetIdx && targetIdx < sourceIdx - 1) {
         violations.push({
           type: 'wrong-direction',
@@ -576,39 +605,84 @@ export class ReverseEngineer {
           file: edge.source,
           evidence: `import { ${edge.symbols.join(', ')} } from '${edge.target}'`,
           expectedBehavior: 'Dependencies should flow downward: controller → service → repository',
+          acknowledged: false,
         });
       }
     }
 
     // 3. Incomplete data flows
     for (const flow of dataFlows) {
+      const flowFile = flow.steps[0]?.file ?? '';
+      if (this.isTestFile(flowFile)) continue;
+      if (this.isInfraEndpoint(flow.trigger)) continue;
+
       if (!flow.complete) {
+        // "inline logic" in GraphQL resolvers is common — acknowledge
+        const isInlineResolver = isGraphQL && flow.gaps.some(g => g.includes('inline'));
         violations.push({
           type: 'coupling-violation',
           severity: 'info',
           description: `${flow.trigger}: data flow chain is incomplete`,
-          file: flow.steps[0]?.file ?? 'unknown',
+          file: flowFile,
           evidence: flow.gaps.join('; '),
           expectedBehavior: 'Complete chain: route → middleware → service → repository → response',
+          acknowledged: isInlineResolver,
+          acknowledgeReason: isInlineResolver ? 'GraphQL resolver with inline logic — common in resolver-first pattern' : undefined,
         });
       }
     }
 
-    // 4. Pattern inconsistency: some routes have service layer, others don't
-    const routesWithService = dataFlows.filter(f => f.steps.some(s => s.layer === 'service'));
-    const routesWithoutService = dataFlows.filter(f => !f.steps.some(s => s.layer === 'service') && f.steps.length > 1);
+    // 4. Pattern inconsistency
+    const nonInfraFlows = dataFlows.filter(f =>
+      !this.isInfraEndpoint(f.trigger) && !this.isTestFile(f.steps[0]?.file ?? '')
+    );
+    const routesWithService = nonInfraFlows.filter(f => f.steps.some(s => s.layer === 'service'));
+    const routesWithoutService = nonInfraFlows.filter(f => !f.steps.some(s => s.layer === 'service') && f.steps.length > 1);
     if (routesWithService.length > 0 && routesWithoutService.length > 0) {
+      const ratio = routesWithService.length / (routesWithService.length + routesWithoutService.length);
+      // If most routes don't use service (>80%), it's probably a conscious choice
+      const acknowledged = ratio < 0.2 || hasNoServiceDecision;
       violations.push({
         type: 'pattern-inconsistency',
-        severity: 'warning',
+        severity: acknowledged ? 'info' : 'warning',
         description: `Mixed patterns: ${routesWithService.length} routes use service layer, ${routesWithoutService.length} don't`,
         file: 'project-wide',
-        evidence: `Without service: ${routesWithoutService.map(f => f.trigger).join(', ')}`,
+        evidence: `Without service: ${routesWithoutService.slice(0, 10).map(f => f.trigger).join(', ')}${routesWithoutService.length > 10 ? ` ... +${routesWithoutService.length - 10} more` : ''}`,
         expectedBehavior: 'All routes should consistently use (or not use) a service layer',
+        acknowledged,
+        acknowledgeReason: acknowledged ? 'Majority pattern is resolver-first without service layer — accepted as project convention' : undefined,
       });
     }
 
     return violations;
+  }
+
+  // ── Violation Helper Predicates ─────────────────────────────
+
+  /** Health, ready, live, metrics — infra endpoints, not business logic */
+  private isInfraEndpoint(trigger: string): boolean {
+    const lower = trigger.toLowerCase();
+    return /^\w+\s+\/?(health|ready|live|metrics|favicon|robots)\b/.test(lower) ||
+      /^\w+\s+\/$/.test(lower);
+  }
+
+  /** Test files should not produce violations */
+  private isTestFile(file: string): boolean {
+    return /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file) ||
+      /__tests__\//.test(file) ||
+      /\btest[s]?\//.test(file) ||
+      /\._patches\//.test(file);
+  }
+
+  /** Entry point files (index.ts, server.ts, app.ts) legitimately import everything */
+  private isEntryPointFile(file: string): boolean {
+    return /(?:^|\/)(?:index|server|app|main)\.(ts|js)$/.test(file);
+  }
+
+  /** Layers that are exempt from wrong-direction checks */
+  private isExemptLayer(layer: ArchLayer): boolean {
+    return layer === 'test' || layer === 'util' || layer === 'type' ||
+      layer === 'config' || layer === 'entry' || layer === 'migration' || layer === 'unknown';
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -919,14 +993,17 @@ Only report issues you're confident about. Empty array if none found.`;
     const decisionsImpl = decisionAudit.filter(d => d.status === 'implemented').length;
     const completeFlows = dataFlows.filter(f => f.complete).length;
 
-    // Health score: 100 base, subtract for issues — scaled by project size
+    // Health score: 100 base, subtract for UNACKNOWLEDGED issues — scaled by project size
     const fileCount = classifications.filter(c => c.layer !== 'test' && c.layer !== 'type').length;
-    const scaleFactor = Math.max(1, Math.log10(fileCount || 1)); // larger projects tolerate more violations
+    const scaleFactor = Math.max(1, Math.log10(fileCount || 1));
+    
+    // Only unacknowledged violations count against health
+    const realViolations = violations.filter(v => !v.acknowledged);
     
     let health = 100;
-    health -= violations.filter(v => v.severity === 'critical').length * (10 / scaleFactor);
-    health -= violations.filter(v => v.severity === 'warning').length * (3 / scaleFactor);
-    health -= violations.filter(v => v.severity === 'info').length * (0.5 / scaleFactor);
+    health -= realViolations.filter(v => v.severity === 'critical').length * (10 / scaleFactor);
+    health -= realViolations.filter(v => v.severity === 'warning').length * (3 / scaleFactor);
+    health -= realViolations.filter(v => v.severity === 'info').length * (0.5 / scaleFactor);
     health -= decisionAudit.filter(d => d.status === 'contradicted').length * 15;
     health -= decisionAudit.filter(d => d.status === 'not-found').length * 3;
     const incompleteRatio = dataFlows.length > 0
