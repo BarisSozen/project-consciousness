@@ -276,3 +276,14 @@
 - **Gerekçe**: "npm test geçiyor" ≠ "endpoint çalışıyor". Gerçek HTTP isteği yalan söyleyemez. Evaluator v2'nin doğal uzantısı.
 - **Alternatifler**: Supertest (dependency), sadece port check (shallow), curl ile test (parse zor)
 - **Durum**: active
+
+---
+
+## D026 — SmartBrief: Tek Soru → Otomatik Analiz → Ürün Soruları → Kararlar
+
+- **Tarih**: 2026-03-24T03:30:00+03:00
+- **Bağlam**: BriefCollector (D012) 7+ soru soruyor (stack, scope, anti-scope ayrı ayrı). ArchitectAgent (D020) 5 teknik soru daha soruyor. Toplam 12+ soru — kullanıcı yoruluyor.
+- **Karar**: SmartBrief: 1 soru ("ne yapmak istiyorsun?") → otomatik analiz (teknik kararları brief'ten çıkar) → sadece belirsiz ürün soruları sor (max 4, hepsi opsiyonel) → anti-scope otomatik çıkar → özet göster. Pattern matching ile auth/DB/API/frontend/deploy otomatik. Kullanıcıya sadece "linkler herkese açık mı?" gibi kavramsal sorular sorulur.
+- **Gerekçe**: Kullanıcı developer değil, ürün düşünürü (MISSION). Teknik detaylar onun işi değil. 12 soru yerine 1+3 = max 4 etkileşim. BriefCollector + ArchitectAgent backward compatible kalır, SmartBrief yeni flow.
+- **Alternatifler**: LLM ile brief analizi (maliyet + latency), sadece template (esneklik yok), tüm soruları koruma (UX kötü)
+- **Durum**: active

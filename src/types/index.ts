@@ -207,6 +207,39 @@ export interface Brief {
   collectedAt: string;
 }
 
+/** SmartBrief v2 — tek soru → analiz → ürün soruları → otomatik karar */
+export interface SmartBriefResult {
+  rawInput: string;
+  analysis: BriefAnalysis;
+  clarifications: ClarificationAnswer[];
+  decisions: ArchitectureDecisions;
+  scope: BriefScope;
+  antiScope: BriefAntiScope;
+  collectedAt: string;
+}
+
+export interface BriefAnalysis {
+  /** Brief'ten otomatik çıkarılan teknik kararlar */
+  autoDecisions: Array<{ key: string; value: string; reason: string }>;
+  /** Belirsiz ürün soruları */
+  uncertainQuestions: ClarificationQuestion[];
+  /** Çıkarılan başarı kriterleri */
+  inferredCriteria: string[];
+}
+
+export interface ClarificationQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  defaultAnswer: string;
+  category: 'access' | 'visibility' | 'lifecycle' | 'monetization' | 'scope';
+}
+
+export interface ClarificationAnswer {
+  questionId: string;
+  answer: string;
+}
+
 export type StackType = 'typescript-node' | 'react' | 'python' | 'go' | 'other';
 
 // ============================================================

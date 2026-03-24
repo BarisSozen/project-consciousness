@@ -2,7 +2,7 @@
 
 ## Current Phase: `executing`
 
-## Iteration: 14
+## Iteration: 15
 
 ## Active Tasks
 _yok_
@@ -19,10 +19,11 @@ _yok_
 - [x] G6-Integration — Blog API pipeline testi (architect→milestone→graph→recovery)
 - [x] G7-CodebaseReader — Task öncesi otomatik dosya okuma (src/ scan, relevance scoring, 8K token limit)
 - [x] G8-IntegrationEvaluator — HTTP endpoint testi (server start, waitForReady, testEndpoint, auto test inference)
+- [x] G9-SmartBrief — Tek soru → otomatik analiz → ürün soruları → kararlar (BriefCollector+ArchitectAgent v2)
 
 ## Key Metrics
-- Kararlar: 25 (D001-D025)
-- Test: 178 passing (17 suites)
+- Kararlar: 26 (D001-D026)
+- Test: 217 passing (18 suites)
 - TypeScript: strict, 0 error
 
 ## Components
@@ -32,5 +33,6 @@ _yok_
 - ✅ RecoveryManager — .pc-checkpoint.json save/load/resume
 - ✅ CodebaseReader — src/ tara, task'a göre ilgili dosyaları bul, context özeti oluştur
 - ✅ IntegrationEvaluator — server başlat, HTTP endpoint test et, sonuç raporla
+- ✅ SmartBrief — tek soru → brief analiz → ürün soruları → otomatik kararlar + anti-scope
 
-## Last Updated: 2026-03-24T02:50:00+03:00
+## Last Updated: 2026-03-24T03:30:00+03:00
