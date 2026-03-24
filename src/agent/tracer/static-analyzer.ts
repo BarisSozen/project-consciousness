@@ -377,18 +377,9 @@ export class StaticAnalyzer {
   private async findPhantomDeps(imports: ImportEdge[]): Promise<WiringIssue[]> {
     const issues: WiringIssue[] = [];
 
-    // package.json oku
-    let pkgDeps: Set<string>;
-    try {
-      const pkg = JSON.parse(await readFile(join(this.projectRoot, 'package.json'), 'utf-8'));
-      pkgDeps = new Set([
-        ...Object.keys(pkg.dependencies ?? {}),
-        ...Object.keys(pkg.devDependencies ?? {}),
-        ...Object.keys(pkg.peerDependencies ?? {}),
-      ]);
-    } catch {
-      return issues; // package.json yoksa kontrol etme
-    }
+    // Tüm package.json'lardan dep'leri topla (monorepo workspace desteği)
+    const { allDeps, rootDeps, isMonorepo } = await this.collectAllDeps();
+    if (!allDeps) return issues;
 
     // External import'ları topla
     const externalImports = new Set<string>();
@@ -405,7 +396,7 @@ export class StaticAnalyzer {
       // Node built-in modüllerini atla
       if (this.isNodeBuiltin(pkg)) continue;
 
-      if (!pkgDeps.has(pkg)) {
+      if (!allDeps.has(pkg)) {
         issues.push({
           type: 'phantom-dep',
           severity: 'critical',
@@ -417,8 +408,9 @@ export class StaticAnalyzer {
       }
     }
 
-    // Kullanılmayan dependency'ler (ters yön)
-    for (const dep of pkgDeps) {
+    // Kullanılmayan dependency'ler — monorepo'da sadece root deps kontrol et
+    const depsToCheck = isMonorepo ? rootDeps : allDeps;
+    for (const dep of depsToCheck) {
       if (dep.startsWith('@types/')) continue; // type packages
       if (!externalImports.has(dep)) {
         issues.push({
@@ -433,6 +425,133 @@ export class StaticAnalyzer {
     }
 
     return issues;
+  }
+
+  /**
+   * Projedeki tüm package.json dosyalarından dependency'leri toplar.
+   * Monorepo workspace yapılarını (pnpm, npm, yarn) otomatik algılar.
+   */
+  private async collectAllDeps(): Promise<{
+    allDeps: Set<string> | null;
+    rootDeps: Set<string>;
+    isMonorepo: boolean;
+  }> {
+    const allDeps = new Set<string>();
+    const rootDeps = new Set<string>();
+
+    // Root package.json
+    let rootPkg: Record<string, unknown>;
+    try {
+      rootPkg = JSON.parse(await readFile(join(this.projectRoot, 'package.json'), 'utf-8'));
+      this.extractDeps(rootPkg, rootDeps);
+      this.extractDeps(rootPkg, allDeps);
+    } catch {
+      return { allDeps: null, rootDeps, isMonorepo: false };
+    }
+
+    // Monorepo tespiti: pnpm-workspace.yaml veya package.json#workspaces
+    const workspaceDirs = await this.findWorkspaceDirs(rootPkg);
+    const isMonorepo = workspaceDirs.length > 0;
+
+    // Her workspace'in package.json'ını oku
+    for (const dir of workspaceDirs) {
+      try {
+        const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
+        this.extractDeps(pkg, allDeps);
+      } catch { /* workspace without package.json */ }
+    }
+
+    return { allDeps: allDeps.size > 0 ? allDeps : null, rootDeps, isMonorepo };
+  }
+
+  private extractDeps(pkg: Record<string, unknown>, deps: Set<string>): void {
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+      const section = pkg[field] as Record<string, string> | undefined;
+      if (section) {
+        for (const name of Object.keys(section)) deps.add(name);
+      }
+    }
+  }
+
+  /**
+   * Monorepo workspace dizinlerini bulur.
+   * pnpm-workspace.yaml ve package.json#workspaces destekler.
+   */
+  private async findWorkspaceDirs(rootPkg: Record<string, unknown>): Promise<string[]> {
+    const patterns: string[] = [];
+
+    // 1. pnpm-workspace.yaml
+    try {
+      const yaml = await readFile(join(this.projectRoot, 'pnpm-workspace.yaml'), 'utf-8');
+      // Basit YAML parser: "  - packages/*" formatını çöz
+      for (const line of yaml.split('\n')) {
+        const match = line.match(/^\s*-\s+['"]?([^'"#\n]+?)['"]?\s*$/);
+        if (match) patterns.push(match[1]!.trim());
+      }
+    } catch { /* not pnpm */ }
+
+    // 2. package.json workspaces (npm/yarn)
+    if (patterns.length === 0) {
+      const workspaces = Array.isArray(rootPkg.workspaces)
+        ? rootPkg.workspaces as string[]
+        : ((rootPkg.workspaces as Record<string, unknown>)?.packages as string[] | undefined) ?? [];
+      patterns.push(...workspaces);
+    }
+
+    if (patterns.length === 0) return [];
+
+    // Glob pattern'ları çöz (packages/*, apps/*, services/*)
+    const dirs: string[] = [];
+    for (const pattern of patterns) {
+      const resolved = await this.resolveWorkspaceGlob(pattern);
+      dirs.push(...resolved);
+    }
+    return dirs;
+  }
+
+  /**
+   * Basit workspace glob çözümleyici.
+   * "packages/*", "apps/*", "services/**" gibi pattern'ları destekler.
+   */
+  private async resolveWorkspaceGlob(pattern: string): Promise<string[]> {
+    const dirs: string[] = [];
+
+    if (pattern.endsWith('/**')) {
+      // Recursive: apps/** → tüm alt dizinler
+      const base = join(this.projectRoot, pattern.slice(0, -3));
+      await this.walkForWorkspaces(base, dirs, 3);
+    } else if (pattern.endsWith('/*')) {
+      // Single level: packages/* → doğrudan alt dizinler
+      const base = join(this.projectRoot, pattern.slice(0, -2));
+      try {
+        const entries = await readdir(base, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+            dirs.push(join(base, entry.name));
+          }
+        }
+      } catch { /* dir doesn't exist */ }
+    } else {
+      // Exact path: tools/scripts
+      dirs.push(join(this.projectRoot, pattern));
+    }
+
+    return dirs;
+  }
+
+  private async walkForWorkspaces(dir: string, results: string[], maxDepth: number): Promise<void> {
+    if (maxDepth <= 0) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch { return; }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      results.push(full);
+      await this.walkForWorkspaces(full, results, maxDepth - 1);
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────

@@ -203,6 +203,53 @@ describe('StaticAnalyzer', () => {
     expect(phantom.some(i => i.detail.includes('winston'))).toBe(true);
   });
 
+  it('should not false-positive phantom deps in monorepo workspaces', async () => {
+    // Monorepo yapısı kur: root + 2 workspace
+    const monoDir = TEST_DIR + '-monorepo';
+    await mkdir(join(monoDir, 'packages', 'web', 'src'), { recursive: true });
+    await mkdir(join(monoDir, 'packages', 'api', 'src'), { recursive: true });
+
+    // Root package.json — sadece typescript
+    await writeFile(join(monoDir, 'package.json'), JSON.stringify({
+      name: 'monorepo-root',
+      private: true,
+      devDependencies: { typescript: '^5.0.0' },
+    }));
+
+    // pnpm-workspace.yaml
+    await writeFile(join(monoDir, 'pnpm-workspace.yaml'),
+      'packages:\n  - packages/*\n');
+
+    // web workspace — react tanımlı
+    await writeFile(join(monoDir, 'packages', 'web', 'package.json'), JSON.stringify({
+      name: '@mono/web',
+      dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0' },
+    }));
+    await writeFile(join(monoDir, 'packages', 'web', 'src', 'app.tsx'),
+      `import React from 'react';\nimport ReactDOM from 'react-dom';\nexport const App = () => <div>Hi</div>;\n`);
+
+    // api workspace — express tanımlı, axios PHANTOM
+    await writeFile(join(monoDir, 'packages', 'api', 'package.json'), JSON.stringify({
+      name: '@mono/api',
+      dependencies: { express: '^5.0.0' },
+    }));
+    await writeFile(join(monoDir, 'packages', 'api', 'src', 'server.ts'),
+      `import express from 'express';\nimport axios from 'axios';\nconst app = express();\nexport { app };\n`);
+
+    const analyzer = new StaticAnalyzer(monoDir);
+    const issues = await analyzer.findIssues();
+    const phantom = issues.filter(i => i.type === 'phantom-dep');
+
+    // react, react-dom, express → workspace'lerde tanımlı, phantom olmamalı
+    expect(phantom.some(i => i.detail.includes("'react'"))).toBe(false);
+    expect(phantom.some(i => i.detail.includes("'express'"))).toBe(false);
+
+    // axios → hiçbir package.json'da yok, phantom olmalı
+    expect(phantom.some(i => i.detail.includes("'axios'"))).toBe(true);
+
+    await rm(monoDir, { recursive: true, force: true }).catch(() => {});
+  });
+
   it('should extract named and default exports correctly', async () => {
     const analyzer = new StaticAnalyzer(TEST_DIR);
     const { exports } = await analyzer.buildGraph();
