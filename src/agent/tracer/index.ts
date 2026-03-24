@@ -18,3 +18,5 @@ export { ASTAnalyzer } from './ast-analyzer.js';
 export type { ASTGraph, FunctionNode, CallEdge } from './ast-analyzer.js';
 export { CrossFileChecker } from './cross-file-checker.js';
 export type { CrossFileReport, ValueMismatch } from './cross-file-checker.js';
+export { LLMOutputGuard } from './llm-output-guard.js';
+export type { GuardReport, GuardFinding } from './llm-output-guard.js';
