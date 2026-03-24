@@ -1,16 +1,16 @@
 [
   {
-    "id": "42d33a5a",
-    "label": "shell3",
-    "command": "bash",
+    "id": "bd8071c7",
+    "label": "shell4",
+    "command": "bash --norc",
     "cwd": "C:\\Users\\Baris\\project-consciousness",
     "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-23T23-30-07-812Z_9b33c16e-2045-405b-989e-4da427f2c27e.jsonl",
     "persistAcrossSessions": false,
-    "startedAt": 1774311880806,
+    "startedAt": 1774312492626,
     "processType": "shell",
     "group": null,
     "readyPattern": null,
     "readyPort": null,
-    "pid": 85372
+    "pid": 78696
   }
 ]

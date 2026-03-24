@@ -1,198 +1,252 @@
 # Project Consciousness
 
-> Multi-agent orchestration with persistent memory — agents never forget why they exist.
+> Sadece ne istediğini söyle, gerisini halleder.
 
-## What Is This?
+Yapay zeka agent'ları sana "hangi framework?", "JWT mi session mı?", "database ne olsun?" diye sormak yerine — sen sadece ne istediğini anlat, sistem teknik kararları kendisi alsın.
 
-Project Consciousness is an **orchestration layer** for multi-agent AI systems that solves the biggest problem in long-running agent workflows: **memory loss**. When agents work on complex tasks over extended periods, they drift from the original mission, make contradictory decisions, and forget context. This system gives every agent a shared, persistent memory through four markdown files — so no matter how many agents run or how long they work, the answer to "why are we building this?" is always one file read away.
+---
 
-## How Is It Different?
-
-| | Project Consciousness | GSD-2 | Paperclip |
-|---|---|---|---|
-| **Focus** | Memory persistence + orchestration | Task management + subagents | Full autonomous agent |
-| **Memory** | 4 markdown files (MISSION, ARCH, DECISIONS, STATE) | Session-based | Internal state |
-| **Relationship** | Sits on top of GSD-2 | Standalone | Standalone |
-| **Complexity** | Minimal (file system, no DB) | Medium | Heavy |
-| **Human role** | Brief once, intervene on escalation | Interactive | Minimal |
-| **Anti-scope** | Built-in (protected files, forbidden deps) | N/A | N/A |
-
-## How It Works
+## Demo
 
 ```
-USER
- │ "Build a TODO REST API with express"
- ▼
-┌──────────────────────────────────────────┐
-│           BRIEF COLLECTOR                 │
-│  Collects: SCOPE + ANTI-SCOPE            │
-│  Writes: MISSION.md                      │
-└──────────────┬───────────────────────────┘
-               ▼
-┌──────────────────────────────────────────┐
-│           ORCHESTRATOR                    │
-│  ┌──────────┐ ┌───────────┐ ┌─────────┐ │
-│  │ Planner  │ │ Evaluator │ │Escalator│ │
-│  └────┬─────┘ └─────┬─────┘ └────┬────┘ │
-│       │             │             │      │
-│  Plan tasks    Check output   Ask human  │
-└───────┬─────────────┬─────────────┬──────┘
-        ▼             ▼             ▼
-┌──────────────────────────────────────────┐
-│           AGENT RUNNER                    │
-│  claude --print + memory context          │
-│  Spawns Claude Code with full memory      │
-│  Retry loop: max 3 → escalate            │
-└──────────────┬───────────────────────────┘
-               ▼
-┌──────────────────────────────────────────┐
-│           MEMORY LAYER                    │
-│                                          │
-│  MISSION.md ──── immutable (human only)  │
-│  ARCHITECTURE.md ── slow-changing        │
-│  DECISIONS.md ──── append-only log       │
-│  STATE.md ──────── live project state    │
-└──────────────────────────────────────────┘
+$ pc init
+
+📋 Ne yapmak istiyorsun?
+> URL shortener istiyorum, kayıt olsun, link tıklanınca 
+  redirect olsun, linkler süresi dolmasın
+
+🔍 Analiz ediliyor...
+   ✅ JWT Auth (kayıt sistemi algılandı)
+   ✅ SQLite (hafif, yeterli)
+   ✅ REST API
+   ✅ TypeScript + Node.js
+
+❓ Birkaç şey sormam gerekiyor:
+
+   Kısaltılmış linkler herkese açık mı, sadece giriş yapanlara mı?
+   1. Herkese açık
+   2. Sadece giriş yapanlar
+   3. İkisi de (seçilebilir)
+   > 1
+
+   Kullanıcılar birbirinin linklerini görebilir mi?
+   1. Evet, herkes görür
+   2. Hayır, sadece kendi
+   3. Opsiyonel paylaşım
+   > 2
+
+╔══════════════════════════════════════════════╗
+║         Plan Özeti                            ║
+╚══════════════════════════════════════════════╝
+
+ ✅ JWT Auth
+ ✅ SQLite
+ ✅ REST API
+ ❌ Frontend yok (sadece API)
+ ❌ Ödeme sistemi yok
+
+📋 Başarı Kriterleri:
+   • npm test geçmeli
+   • kayıt olsun
+   • link tıklanınca redirect olsun
+   • linkler süresi dolmasın
+
+$ pc run
+
+🚀 Orchestrator başlatıldı...
+📐 Mimari kararlar uygulanıyor...
+📦 Milestone M01: Foundation — DB schema, config
+📦 Milestone M02: Auth — register, login, JWT
+📦 Milestone M03: URL Shortener — CRUD, redirect
+🤖 Agent çalışıyor: M01...
+✅ M01 tamamlandı (tsc ✅, test ✅)
+🤖 Agent çalışıyor: M02...
+✅ M02 tamamlandı (tsc ✅, test ✅, endpoint ✅)
+🤖 Agent çalışıyor: M03...
+✅ M03 tamamlandı (tsc ✅, test ✅, endpoint ✅)
+
+✅ Proje tamamlandı — 3/3 milestone başarılı
 ```
 
-### The Loop
+---
 
-1. **Brief** → User describes what to build (scope + anti-scope)
-2. **Plan** → Orchestrator creates task graph
-3. **Execute** → Agent runs with full memory context injected
-4. **Evaluate** → Real checks (tsc, npm test) + anti-scope validation
-5. **Accept / Retry / Escalate** → Auto-retry up to 3x, then ask human
-6. **Update** → DECISIONS.md + STATE.md updated after every task
-
-## Quick Start
-
-### Option A: npx (no install)
+## Kurulum
 
 ```bash
-cd your-project
-npx project-consciousness init     # interactive brief collection
-npx project-consciousness run      # orchestrator starts
-```
+# Hemen dene (kurulum gereksiz)
+npx project-consciousness init
 
-### Option B: Global install
-
-```bash
+# veya global kur
 npm install -g project-consciousness
-cd your-project
-pc init       # interactive brief → creates MISSION.md, ARCHITECTURE.md, etc.
-pc run        # orchestrator reads MISSION.md and starts working
-pc status     # show STATE.md
-pc log        # show DECISIONS.md
+pc init
+pc run
 ```
 
-### Option C: Clone & build
-
-```bash
-git clone https://github.com/BarisSozen/project-consciousness.git
-cd project-consciousness
-npm install
-npm run build
-```
-
-### API Key
+**Gereksinimler:** Node.js 20+, [Anthropic API key](https://console.anthropic.com/)
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-# or copy .env.example → .env
 ```
 
-### CLI Commands
+---
 
-| Command | Description |
-|---------|-------------|
-| `pc init` | Interactive brief collection → creates 4 memory files |
-| `pc run [brief]` | Start orchestrator (reads MISSION.md if no brief given) |
-| `pc run "Build X"` | Start orchestrator with inline brief |
-| `pc status` | Show current STATE.md |
-| `pc log` | Show DECISIONS.md |
-| `pc help` | Help message |
+## Ne Sorar, Ne Sormaz
 
-### Programmatic Usage
+| Sana sorar ✅ | Kendisi karar verir ❌ |
+|---|---|
+| "Linkler herkese açık mı?" | JWT mi session mı? |
+| "Kullanıcılar birbirini görebilir mi?" | Hangi database? |
+| "Ödeme sistemi olacak mı?" | REST mi GraphQL mı? |
+| "Linkler süresi dolar mı?" | Hangi dosya yapısı? |
+
+Teknik kararları brief'inden otomatik çıkarır. Sadece **ürün kararlarını** — yani senin bilmen gereken şeyleri — sorar.
+
+---
+
+## Nasıl Çalışır
+
+Her şey 4 dosya üzerinden döner:
+
+| Dosya | Ne İçerir | Kimin |
+|-------|-----------|-------|
+| `MISSION.md` | Ne yapılacak, ne yapılmayacak, başarı kriterleri | Senin (değişmez) |
+| `ARCHITECTURE.md` | Teknik kararlar — auth, DB, API stili | Sistem (otomatik) |
+| `DECISIONS.md` | Her karar, neden alındı, ne zaman | Log (append-only) |
+| `STATE.md` | Şu an hangi aşamada, ne bitti, ne kaldı | Canlı durum |
+
+Agent her göreve başlamadan önce bu 4 dosyayı okur. "Neden bu projeyi yapıyoruz?" sorusunun cevabını asla unutmaz.
+
+### Akış
+
+```
+Sen: "URL shortener istiyorum..."
+ │
+ ▼
+┌─────────────────────────────────┐
+│  SmartBrief                      │
+│  1 soru → analiz → ürün soruları │
+│  → MISSION.md + ARCHITECTURE.md  │
+└──────────┬──────────────────────┘
+           ▼
+┌─────────────────────────────────┐
+│  Orchestrator                    │
+│  Plan → Milestone → Agent → Test │
+│  Başarısız? → 3x retry → sana   │
+│  sor                             │
+└──────────┬──────────────────────┘
+           ▼
+┌─────────────────────────────────┐
+│  Memory Layer                    │
+│  Her karar DECISIONS.md'ye       │
+│  Her adım STATE.md'ye            │
+│  Hiçbir şey kaybolmaz            │
+└─────────────────────────────────┘
+```
+
+### Kontrol Mekanizması
+
+Kod yazıldıktan sonra gerçekten çalışıp çalışmadığı test edilir:
+
+- **TypeScript derleme** — `tsc --noEmit` ile tip hataları
+- **Test çalıştırma** — `vitest run` / `pytest` / `go test`
+- **HTTP endpoint testi** — server başlatılır, gerçek HTTP isteği atılır
+- **Anti-scope kontrolü** — korunan dosyalara dokunulmuş mu? yasaklı bağımlılık eklenmiş mi?
+
+Başarısız olursa 3 kez otomatik düzeltme dener. Düzelmezse sana sorar.
+
+---
+
+## CLI Komutları
+
+| Komut | Ne Yapar |
+|-------|----------|
+| `pc init` | Brief topla → 4 dosya oluştur |
+| `pc run` | Orchestrator'u başlat |
+| `pc run "Todo API yap"` | Brief ile direkt başlat |
+| `pc status` | STATE.md'yi göster |
+| `pc log` | DECISIONS.md'yi göster |
+| `pc help` | Yardım |
+
+---
+
+## İzlenebilirlik
+
+Her şey loglanır, hiçbir şey silinmez:
+
+```markdown
+## D024 — Codebase Context: Task Öncesi Otomatik Dosya Okuma
+- **Tarih**: 2026-03-24T02:30:00+03:00
+- **Karar**: CodebaseReader ile src/ taranır, task'a göre ilgili dosyalar seçilir
+- **Gerekçe**: Agent mevcut kodu bilmeli, yoksa duplicate yazar
+- **Durum**: active
+```
+
+6 ay sonra "neden böyle yapmışız?" sorusunun cevabı → `DECISIONS.md`.
+
+---
+
+## Geliştirici Notları
+
+### Programmatic Kullanım
 
 ```typescript
-import { BriefCollector } from 'project-consciousness/brief';
+import { SmartBrief } from 'project-consciousness/brief';
 import { MemoryLayer } from 'project-consciousness/memory';
 import { Orchestrator } from 'project-consciousness/orchestrator';
+import { CodebaseReader } from 'project-consciousness/agent';
+
+// Non-interactive brief (test / CI)
+const sb = new SmartBrief();
+const result = sb.runNonInteractive('URL shortener, kayıt olsun');
+console.log(result.decisions);  // { auth: 'jwt', database: 'sqlite', ... }
+console.log(result.antiScope);  // { forbiddenDeps: ['react', 'vue'], ... }
 ```
 
-## Memory Files
-
-| File | Changes | Who Writes | Purpose |
-|------|---------|------------|---------|
-| `MISSION.md` | Never (immutable) | Human only | Why this project exists, success criteria, anti-scope |
-| `ARCHITECTURE.md` | Rarely | Approved changes | Technical decisions, stack, design principles |
-| `DECISIONS.md` | Every decision | Append-only | Chronological decision log with rationale |
-| `STATE.md` | Every task | Orchestrator | Current phase, active/completed/blocked tasks |
-
-## Project Structure
+### Proje Yapısı
 
 ```
 src/
-├── memory/          # Memory Layer — reads/writes the 4 files
-│   └── memory-layer.ts
-├── orchestrator/    # Plan → Execute → Evaluate → Escalate
-│   ├── orchestrator.ts
-│   ├── planner.ts
-│   ├── evaluator.ts
-│   └── escalator.ts
-├── agent/           # Claude Code process spawning
-│   ├── agent-runner.ts
-│   ├── process-spawner.ts
-│   ├── context-builder.ts
-│   └── output-parser.ts
-├── brief/           # SCOPE + ANTI-SCOPE collection
-│   └── brief-collector.ts
-├── types/           # All TypeScript interfaces
-│   └── index.ts
-└── index.ts         # CLI entry point
+├── brief/           SmartBrief + BriefCollector
+├── agent/           Agent Runner, Context Builder, Codebase Reader
+├── orchestrator/    Planner, Evaluator, Escalator, Integration Evaluator
+├── memory/          4 dosya okuma/yazma
+├── types/           TypeScript interface'ler
+└── bin/             CLI (pc init/run/status/log)
 ```
 
-## Tests
+### Test
 
 ```bash
-npm test                    # all tests
-npx vitest run tests/todo.test.ts   # specific test
-SKIP_E2E=1 npm test         # skip real Claude CLI tests
+npm test                              # 217 test, 18 suite
+npx vitest run tests/smart-brief.test.ts   # spesifik suite
+SKIP_E2E=1 npm test                   # Claude CLI testlerini atla
 ```
 
-**Current: 111+ tests across 11 suites** — memory, orchestrator, evaluator, agent runner, brief collector, calculator, TODO API, E2E integration.
+TypeScript strict mode, 0 error. Vitest ile test.
 
-## Evaluator — Real Checks
+### Stack
 
-The evaluator doesn't just ask an LLM if the code is good. It runs **real commands**:
+- TypeScript + Node.js
+- Claude API (orchestrator reasoning)
+- Claude Code (agent execution)
+- Vitest (test)
+- Dosya sistemi (hafıza — DB yok)
 
-| Stack | Checks |
-|-------|--------|
-| TypeScript/Node | `tsc --noEmit`, `vitest run <agent-files>`, `eslint` |
-| React | `tsc`, `vitest`, `npm run build`, `eslint` |
-| Python | `pytest`, `mypy`, `flake8` |
-| Go | `go build`, `go test`, `go vet` |
+### Tasarım İlkeleri
 
-Plus **anti-scope enforcement**: if the agent touches a protected file or imports a forbidden dependency → automatic `FAIL` + escalation.
+1. **Memory-First** — Her karar dosyada iz bırakır
+2. **Fail-Safe** — Şüphe varsa insana sor
+3. **Append-Only** — DECISIONS.md asla düzenlenmez
+4. **Minimal** — Dosya sistemi yeterli, DB gereksiz
+5. **Human-Readable** — Tüm state markdown
 
-## Contributing
+### Katkı
 
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Run tests (`npm test`)
-4. Ensure TypeScript compiles (`npx tsc --noEmit`)
-5. Commit with conventional commits (`feat:`, `fix:`, `docs:`)
-6. Open a PR
+1. Fork → branch → test → PR
+2. `npm test` geçmeli
+3. `npx tsc --noEmit` 0 hata
+4. Conventional commits (`feat:`, `fix:`, `docs:`)
 
-### Design Principles
+## Lisans
 
-1. **Memory-First** — Every decision leaves a trace in the files
-2. **Fail-Safe** — When in doubt, ask the human
-3. **Append-Only Log** — DECISIONS.md is never edited, only appended
-4. **Minimal Complexity** — File system is enough, no database
-5. **Human-Readable** — All state is markdown, humans can read it directly
-6. **Composable** — Sits on top of GSD-2, doesn't replace it
-
-## License
-
-MIT
+MIT — [Baris Sozen](https://github.com/BarisSozen)
