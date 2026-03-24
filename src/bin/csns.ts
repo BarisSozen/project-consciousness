@@ -198,6 +198,24 @@ async function cmdTrace(config: OrchestratorConfig): Promise<void> {
   console.log(`     ⚠️  Warning: ${report.summary.warningCount}`);
 }
 
+async function cmdReview(args: string, config: OrchestratorConfig): Promise<void> {
+  console.log('  🔍 Reviewing changes...\n');
+
+  const { PRReviewer } = await import('../orchestrator/pr-reviewer.js');
+  const provider = getProvider(config);
+  const reviewer = new PRReviewer(PROJECT_ROOT, provider);
+
+  const isAll = args.includes('--all');
+  const commitMatch = args.match(/--commit\s+(\S+)/);
+  const scope = commitMatch ? 'commit' as const : isAll ? 'all' as const : 'staged' as const;
+
+  const result = await reviewer.review(scope, commitMatch?.[1]);
+
+  // Print markdown to terminal
+  console.log(result.markdown);
+  console.log(`  ⏱️ ${result.duration}ms\n`);
+}
+
 async function cmdStatus(): Promise<void> {
   try {
     const content = await readFile(join(PROJECT_ROOT, 'STATE.md'), 'utf-8');
@@ -252,6 +270,8 @@ function printHelp(): void {
   Commands:
     /new [brief]    Start a new project (interactive if no brief given)
     /audit          Reverse-engineer & audit current codebase
+    /review         Review staged git changes (security + architecture)
+    /review --all   Review all uncommitted changes
     /trace          Full 4-layer trace (static + semantic + runtime + audit)
     /status         Show STATE.md
     /log            Show DECISIONS.md
@@ -306,6 +326,8 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdNew(input.slice(4).trim(), config);
       } else if (input === '/audit') {
         await cmdAudit(config);
+      } else if (input.startsWith('/review')) {
+        await cmdReview(input.slice(7).trim(), config);
       } else if (input === '/trace') {
         await cmdTrace(config);
       } else if (input === '/status') {
@@ -348,6 +370,9 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
       break;
     case 'audit':
       await cmdAudit(config);
+      break;
+    case 'review':
+      await cmdReview(args, config);
       break;
     case 'trace':
       await cmdTrace(config);
