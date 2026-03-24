@@ -6,3 +6,5 @@ export { DependencyGraph } from './dependency-graph.js';
 export { MilestoneManager } from './milestone-manager.js';
 export { RecoveryManager } from './recovery.js';
 export { IntegrationEvaluator } from './integration-evaluator.js';
+export { AuditGate } from './audit-gate.js';
+export { scaffoldProject } from './scaffold.js';

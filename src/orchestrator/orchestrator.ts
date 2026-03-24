@@ -10,6 +10,8 @@ import { AgentRunner } from '../agent/index.js';
 import { Planner } from './planner.js';
 import { Evaluator } from './evaluator.js';
 import { Escalator } from './escalator.js';
+import { AuditGate } from './audit-gate.js';
+import { resolveProvider } from '../llm/resolve.js';
 import { t, setLocale } from '../i18n/index.js';
 import type { 
   OrchestratorConfig,
@@ -30,6 +32,7 @@ export class Orchestrator {
   private planner: Planner;
   private evaluator: Evaluator;
   private escalator: Escalator;
+  private auditGate: AuditGate;
   private config: OrchestratorConfig;
   private steps: OrchestrationStep[] = [];
   private sessionId: string;
@@ -55,6 +58,11 @@ export class Orchestrator {
     this.planner = new Planner(config);
     this.evaluator = new Evaluator(config);
     this.escalator = new Escalator();
+    this.auditGate = new AuditGate(
+      config.projectRoot,
+      resolveProvider(config),
+      (msg) => this.log(msg)
+    );
     this.sessionId = `session-${Date.now()}`;
   }
 
@@ -96,7 +104,48 @@ export class Orchestrator {
     // 6. Execution loop
     await this.executePlan(plan);
 
-    // 7. Session özeti
+    // 7. Post-build audit gate
+    this.log('\n🔍 Running post-build audit...');
+    const memoryFiles = await this.memory.readAll();
+    const auditResult = await this.auditGate.run(memoryFiles);
+
+    if (!auditResult.passed && auditResult.fixTasks.length > 0) {
+      this.log(`\n🔧 Audit found ${auditResult.fixTasks.length} issues — generating fix tasks...`);
+
+      // Log audit decision
+      const auditDecisionId = await this.memory.getNextDecisionId();
+      await this.memory.appendDecision({
+        id: auditDecisionId,
+        title: `Post-build audit: ${auditResult.passed ? 'PASSED' : 'FAILED'} (${auditResult.report.summary.healthScore}/100)`,
+        date: new Date().toISOString(),
+        context: `Automated audit after plan execution`,
+        decision: auditResult.summary,
+        rationale: `${auditResult.report.violations.length} violations, ${auditResult.fixTasks.length} fix tasks generated`,
+        alternatives: 'Manual code review',
+        status: 'active',
+      });
+
+      // Execute fix tasks
+      const fixPlan: TaskPlan = {
+        tasks: auditResult.fixTasks,
+        executionOrder: [auditResult.fixTasks.map(t2 => t2.id)],
+        estimatedSteps: auditResult.fixTasks.length,
+      };
+
+      for (const fixTask of auditResult.fixTasks) {
+        this.taskMap.set(fixTask.id, fixTask);
+      }
+
+      this.log('\n── Audit Fix Round ──');
+      await this.executePlan(fixPlan);
+
+      // Re-audit after fix
+      this.log('\n🔍 Re-auditing after fixes...');
+      const reAudit = await this.auditGate.run(await this.memory.readAll());
+      this.log(`  💯 Health: ${reAudit.report.summary.healthScore}/100 ${reAudit.passed ? '✅' : '⚠️ still below threshold'}`);
+    }
+
+    // 8. Session summary
     return {
       sessionId: this.sessionId,
       startedAt: new Date().toISOString(),
