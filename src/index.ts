@@ -47,8 +47,9 @@ async function main(): Promise<void> {
   }
 
   console.log('╔══════════════════════════════════════════════╗');
-  console.log('║       PROJECT CONSCIOUSNESS v0.1.0           ║');
-  console.log('║   Multi-Agent Orchestration with Memory      ║');
+  console.log('║       CSNS v0.6.0                            ║');
+  console.log('║   Code-aware Self-correcting                 ║');
+  console.log('║   Never-forgetting System                    ║');
   console.log('╚══════════════════════════════════════════════╝');
   console.log();
   console.log(`📄 Brief: ${brief.slice(0, 100)}${brief.length > 100 ? '...' : ''}`);

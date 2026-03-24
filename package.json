@@ -1,7 +1,7 @@
 {
-  "name": "project-consciousness",
-  "version": "0.5.0",
-  "description": "Multi-agent orchestration with persistent memory — agents never forget why they exist",
+  "name": "csns",
+  "version": "0.6.0",
+  "description": "CSNS — Code-aware Self-correcting Never-forgetting System",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,7 +36,7 @@
     }
   },
   "bin": {
-    "pc": "dist/bin/pc.js"
+    "csns": "dist/bin/csns.js"
   },
   "files": [
     "dist",
@@ -65,10 +65,11 @@
     "multi-agent",
     "orchestration",
     "memory",
-    "claude",
+    "audit",
+    "reverse-engineering",
     "agent",
     "llm",
-    "consciousness"
+    "csns"
   ],
   "repository": {
     "type": "git",
