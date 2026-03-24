@@ -13,3 +13,4 @@ export { RuntimeTracer } from './tracer/index.js';
 export { ReverseEngineer } from './tracer/index.js';
 export { SecurityScanner } from './tracer/index.js';
 export { ASTAnalyzer } from './tracer/index.js';
+export { CrossFileChecker } from './tracer/index.js';

@@ -16,3 +16,5 @@ export { SecurityScanner } from './security-scanner.js';
 export type { SecurityReport, SecurityFinding } from './security-scanner.js';
 export { ASTAnalyzer } from './ast-analyzer.js';
 export type { ASTGraph, FunctionNode, CallEdge } from './ast-analyzer.js';
+export { CrossFileChecker } from './cross-file-checker.js';
+export type { CrossFileReport, ValueMismatch } from './cross-file-checker.js';
