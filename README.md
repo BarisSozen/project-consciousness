@@ -1,64 +1,93 @@
-# Project Consciousness
+# CSNS
 
-> Just say what you want. It handles the rest.
+> **C**ode-aware **S**elf-correcting **N**ever-forgetting **S**ystem
 
-AI agents that don't ask you "which framework?" or "JWT or session?" — you describe what you need, the system makes the technical decisions itself.
+Just say what you want. It handles the rest.
+Or point it at existing code — it reverse-engineers, audits, and scores your architecture.
 
-**Multi-model** · **Multi-language** · **Memory-first** · **Self-correcting**
+**Multi-model** · **Multi-language** · **Memory-first** · **Self-correcting** · **Codebase auditor**
+
+```bash
+npm install -g @barissozen/csns
+csns
+```
 
 ---
 
-## Demo
+## What It Does
 
 ```
-$ pc init
+csns> /new "URL shortener with auth"     → builds it from scratch
+csns> /audit                              → reverse-engineers & scores existing code
+csns> /trace                              → 4-layer deep analysis
+csns> /health                             → checks LLM + agent + memory status
+```
 
-📋 What do you want to build?
-> I want a URL shortener with user registration, redirect on click,
-  links never expire
+**Two modes:**
+1. **Build** — describe what you want, CSNS makes technical decisions, writes code, tests it, audits the result
+2. **Audit** — point it at any TypeScript project, it classifies layers, traces data flows, checks architectural decisions, scores health 0–100
 
-🔍 Analyzing...
-   ✅ JWT Auth (registration detected)
-   ✅ SQLite (lightweight, sufficient)
-   ✅ REST API
-   ✅ TypeScript + Node.js
+---
 
-❓ A few product questions:
+## Demo: Build
 
-   Are shortened links public or login-only?
-   1. Public
-   2. Login only
-   3. Both (configurable)
-   > 1
+```
+$ csns
 
-   Can users see each other's links?
-   1. Yes, everyone sees all
-   2. No, only their own
-   3. Optional sharing
-   > 2
+  ╔══════════════════════════════════════════════╗
+  ║   CSNS v0.7.5                                ║
+  ║   Code-aware Self-correcting                 ║
+  ║   Never-forgetting System                    ║
+  ╚══════════════════════════════════════════════╝
 
-╔══════════════════════════════════════════════╗
-║              Plan Summary                    ║
-╚══════════════════════════════════════════════╝
+  Type /help for commands, /quit to exit.
 
- ✅ JWT Auth        ❌ No frontend (API only)
- ✅ SQLite          ❌ No payment system
- ✅ REST API
+  csns> /new
+  📋 What do you want to build?
+  > URL shortener with user registration
 
-$ pc run
+  🔍 Analyzing...
+  ✅ JWT Auth · ✅ SQLite · ✅ REST API · ✅ TypeScript
 
-🚀 Orchestration starting...
-📦 Milestone M01: Foundation — DB schema, config
-📦 Milestone M02: Auth — register, login, JWT
-📦 Milestone M03: URL Shortener — CRUD, redirect
-🤖 Agent working: M01...
-✅ M01 completed (tsc ✅, test ✅)
-🤖 Agent working: M02...
-✅ M02 completed (tsc ✅, test ✅, endpoint ✅)
-🤖 Agent working: M03...
-✅ M03 completed (tsc ✅, test ✅, endpoint ✅)
+  🚀 Starting orchestration...
+  📦 M01: Foundation → ✅ (tsc ✅, test ✅)
+  📦 M02: Auth       → ✅ (tsc ✅, test ✅, endpoint ✅)
+  📦 M03: Shortener  → ✅ (tsc ✅, test ✅, endpoint ✅)
 
-✅ Project complete — 3/3 milestones successful
+  🔍 Post-build audit...
+  💯 Health: 94/100 — 2 minor violations, auto-fixing...
+  ✅ Re-audit: 100/100
+
+  csns> /quit
+  👋 Bye.
+```
+
+## Demo: Audit
+
+```
+  csns> /audit
+  🔍 Running reverse engineering audit...
+
+  ═══════════════════════════════════════════
+  📋 AUDIT REPORT
+  ═══════════════════════════════════════════
+
+  🏗️  Layer Distribution:
+     controller    42    service    37    middleware    17
+     repository    239   config     16    schema       10
+
+  🔀 Data Flows: 5/68 complete
+
+  ⚠️  Violations: 43 (43 acknowledged, 0 real)
+     ✅ 19x GraphQL resolver-first pattern
+     ✅ 30x Inline resolver logic — accepted convention
+
+  🧩 Patterns:
+     GraphQL Federation · GraphQL Resolvers · Event-Driven
+     Circuit Breaker · Service Layer · Middleware Chain
+
+  💯 Health Score: 96/100
+  ═══════════════════════════════════════════
 ```
 
 ---
@@ -66,11 +95,8 @@ $ pc run
 ## Install
 
 ```bash
-npx project-consciousness init     # try instantly
-# or
-npm install -g project-consciousness
-pc init
-pc run
+npm install -g @barissozen/csns
+csns
 ```
 
 **Requirements:** Node.js 20+, at least one LLM provider
@@ -86,8 +112,6 @@ export OLLAMA_HOST=http://localhost:11434  # Local (Llama, Mistral, etc.)
 
 ## Multi-Model Support
 
-Use any LLM provider — switch with a single env variable:
-
 | Provider | Env Variable | Models |
 |----------|-------------|--------|
 | **Anthropic** (default) | `ANTHROPIC_API_KEY` | Claude Sonnet, Opus, Haiku |
@@ -96,98 +120,142 @@ Use any LLM provider — switch with a single env variable:
 | **OpenAI-compatible** | `OPENAI_API_KEY` + `LLM_BASE_URL` | Groq, Together, Azure, etc. |
 
 ```bash
-# Auto-detect: whichever key exists is used
-export ANTHROPIC_API_KEY=sk-ant-...
-pc run "Build a todo API"
+# Auto-detect from env
+csns
 
 # Explicit override
-LLM_PROVIDER=openai OPENAI_API_KEY=sk-... pc run "Build a todo API"
+LLM_PROVIDER=openai OPENAI_API_KEY=sk-... csns
 
-# Local Ollama (no API key needed)
-LLM_PROVIDER=ollama pc run "Build a todo API"
+# Local — no API key needed
+LLM_PROVIDER=ollama csns
+```
+
+---
+
+## CLI Commands
+
+### Interactive (REPL)
+
+```
+csns                           → starts interactive prompt
+csns> /new [brief]             → build a new project
+csns> /audit                   → reverse-engineer & audit codebase
+csns> /trace                   → full 4-layer analysis
+csns> /status                  → show STATE.md
+csns> /log                     → show DECISIONS.md
+csns> /health                  → check LLM + agent CLI + memory files
+csns> /help                    → list commands
+csns> /quit                    → exit
+```
+
+### Non-interactive (CI / scripts)
+
+```bash
+csns new "Build a todo API with auth"
+csns audit
+csns trace
+csns status
+csns health
+```
+
+---
+
+## Audit Engine
+
+The `/audit` command reverse-engineers any TypeScript project:
+
+### 4 Layers
+
+| Layer | What | How |
+|-------|------|-----|
+| **Static** | Import/export graph, dead exports, circular deps, phantom deps | Regex scan of all `.ts` files |
+| **Semantic** | "This service should be injected but isn't" | LLM reasoning over graph + file summaries |
+| **Runtime** | Server started, HTTP probed, handler chain traced | Express middleware + HTTP probing |
+| **Audit** | Architecture recovery, decision archaeology, pattern detection | Layer classification + cross-reference |
+
+### What It Finds
+
+| Finding | Example |
+|---------|---------|
+| **Layer skip** | Controller → Repository (skipping service layer) |
+| **Wrong direction** | Service imports controller (upward dependency) |
+| **Dead export** | `unusedHelper()` exported but never imported |
+| **Circular dep** | `logger → config → logger` |
+| **Phantom dep** | `winston` imported but not in `package.json` |
+| **Decision contradiction** | ARCHITECTURE says JWT but code uses session |
+| **Pattern inconsistency** | 7 routes use service layer, 52 don't |
+
+### Smart Acknowledgement
+
+CSNS distinguishes **design decisions** from **real bugs**:
+
+```
+Violation found
+    │
+    ├── GraphQL resolver → DB direct?  → ✅ Acknowledged (resolver-first pattern)
+    ├── Written in ARCHITECTURE.md?    → ✅ Acknowledged (explicit decision)
+    ├── >80% routes follow same way?   → ✅ Acknowledged (project convention)
+    │
+    └── None of the above?             → ⚠️ Real issue — counts against health
+```
+
+### Tested On Real Projects
+
+```
+Project               Files  Violations           Health
+──────────────────────────────────────────────────────────
+Cayman Data              37    0 (0 ack, 0 real)  100.0 💯
+Yieldex                  84    1 (0 ack, 1 real)   98.3
+Wallet SDK               26    1 (0 ack, 1 real)   97.8
+Cayman-Hashlock         530   43 (43 ack, 0 real)  96.0
+CSNS (self)              72    6 (2 ack, 4 real)   93.0
+Cayman Mobile            32    5 (0 ack, 5 real)   89.4
 ```
 
 ### Programmatic
 
 ```typescript
-import { createProvider } from 'project-consciousness/llm';
+import { ReverseEngineer } from '@barissozen/csns/agent';
 
-// Auto-detect from env
-const provider = createProvider();
+const auditor = new ReverseEngineer('/path/to/project');
+const report = await auditor.audit();
 
-// Or explicit
-const claude = createProvider({ provider: 'anthropic', apiKey: 'sk-ant-...' });
-const gpt = createProvider({ provider: 'openai', apiKey: 'sk-...', model: 'gpt-4o' });
-const local = createProvider({ provider: 'ollama', model: 'llama3' });
+report.classifications   // file → layer mapping
+report.dataFlows         // end-to-end request chains
+report.violations        // architectural issues (acknowledged vs real)
+report.decisionAudit     // DECISIONS.md cross-check
+report.patterns          // detected design patterns
+report.summary.healthScore  // 0–100
 ```
 
 ---
 
-## Multi-Language (i18n)
-
-All user-facing messages, prompts, and agent personas support multiple languages:
-
-```bash
-PC_LOCALE=en pc run "Build a todo API"     # English (default)
-PC_LOCALE=tr pc run "Todo API yap"         # Türkçe
-```
-
-Currently supported: **English** (`en`), **Turkish** (`tr`). Adding a new locale is one file — see `src/i18n/`.
-
----
-
-## Agent CLI Abstraction
-
-The orchestrator spawns coding agents via CLI. Default is Claude Code, but any compatible CLI works:
-
-```bash
-AGENT_BINARY=claude pc run "..."     # Claude Code (default)
-AGENT_BINARY=codex pc run "..."      # OpenAI Codex CLI
-AGENT_BINARY=aider pc run "..."      # Aider
-```
-
-The agent receives a prompt via stdin and returns structured output. Any CLI that accepts `--print` mode or stdin prompts can be plugged in.
-
----
-
-## How It Works
+## Build Engine
 
 ### The 4-File Memory System
 
-Everything runs on 4 markdown files. Agents read them before every task and never forget why they exist.
-
-| File | What It Contains | Owned By |
-|------|-----------------|----------|
+| File | What | Who |
+|------|------|-----|
 | `MISSION.md` | What to build, what NOT to build, success criteria | You (immutable) |
 | `ARCHITECTURE.md` | Technical decisions — auth, DB, API style | System (auto) |
-| `DECISIONS.md` | Every decision, why it was made, when | Log (append-only) |
-| `STATE.md` | Current phase, what's done, what's left | Live status |
+| `DECISIONS.md` | Every decision + rationale (append-only) | Log |
+| `STATE.md` | Current phase, what's done, what's left | Live |
 
-### Architecture
+### Build → Audit → Fix Loop
 
 ```
-You: "I want a URL shortener..."
- │
- ▼
-┌─────────────────────────────────┐
-│  SmartBrief                      │
-│  1 question → analysis →         │
-│  product questions only          │
-│  → MISSION.md + ARCHITECTURE.md  │
-└──────────┬──────────────────────┘
-           ▼
-┌─────────────────────────────────┐
-│  Orchestrator                    │
-│  Plan → Milestone → Agent → Test │
-│  Failed? → 3x retry → ask you   │
-└──────────┬──────────────────────┘
-           ▼
-┌─────────────────────────────────┐
-│  Memory Layer                    │
-│  Every decision → DECISIONS.md   │
-│  Every step → STATE.md           │
-│  Nothing is lost                 │
-└─────────────────────────────────┘
+/new "Build a todo API"
+    │
+    ▼
+SmartBrief → Scaffold → Orchestrator → Agents write code
+    │                                        │
+    │                                   tsc ✅ test ✅
+    │                                        │
+    ▼                                        ▼
+MISSION.md                             Audit Gate (automatic)
+ARCHITECTURE.md                        Health < 70? → Fix tasks
+DECISIONS.md                           Re-audit → ✅ Done
+STATE.md
 ```
 
 ### What It Asks vs. What It Decides
@@ -197,76 +265,6 @@ You: "I want a URL shortener..."
 | "Are links public or private?" | JWT or session? |
 | "Can users see each other's data?" | Which database? |
 | "Will there be payments?" | REST or GraphQL? |
-| "Do links expire?" | File structure? |
-
-Technical decisions are inferred from your brief. Only **product decisions** — things you need to know — are asked.
-
-### Quality Control Pipeline
-
-After code is written, it's verified:
-
-1. **Type checking** — `tsc --noEmit`
-2. **Test execution** — `vitest run` / `pytest` / `go test`
-3. **HTTP endpoint testing** — server started, real HTTP requests sent
-4. **Anti-scope enforcement** — protected files touched? forbidden deps added?
-
-Failed? 3x auto-retry with feedback → still failing? → escalation to you.
-
-### Tracer Agent — Data Flow Inspector
-
-A specialized agent that "walks" through the project, tracking data flow and finding wiring problems:
-
-```typescript
-import { TracerAgent } from 'project-consciousness/agent';
-
-const tracer = new TracerAgent({
-  projectRoot: process.cwd(),
-  llmProvider: provider,     // any LLMProvider
-  port: 3000,
-});
-
-const report = await tracer.run();
-// report.staticIssues     → dead exports, circular deps, phantom deps
-// report.semanticInsights → LLM-detected injection gaps, config mismatches
-// report.runtimeTraces    → HTTP probe results, handler chains, data flow
-```
-
-**3-layer analysis:**
-
-| Layer | What | How |
-|-------|------|-----|
-| **Static** | Import/export graph, dead code, circular deps, phantom deps | Regex scan of all `.ts` files |
-| **Semantic** | "This service should be injected but isn't" | LLM reasoning over graph + file summaries |
-| **Runtime** | Server started, HTTP probed, handler chain traced | Express middleware injection + HTTP probing |
-
----
-
-## CLI Commands
-
-| Command | What It Does |
-|---------|-------------|
-| `pc init` | Collect brief → create 4 memory files |
-| `pc run` | Start the orchestrator |
-| `pc run "Build a todo API"` | Start with inline brief |
-| `pc status` | Show STATE.md |
-| `pc log` | Show DECISIONS.md |
-| `pc help` | Help |
-
----
-
-## Traceability
-
-Everything is logged, nothing is deleted:
-
-```markdown
-## D024 — Codebase Context: Pre-Task File Reading
-- **Date**: 2026-03-24T02:30:00+03:00
-- **Decision**: CodebaseReader scans src/, selects relevant files per task
-- **Rationale**: Agent must know existing code, otherwise writes duplicates
-- **Status**: active
-```
-
-6 months later: "why did we do it this way?" → `DECISIONS.md`.
 
 ---
 
@@ -279,84 +277,76 @@ Everything is logged, nothing is deleted:
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
-| `LLM_PROVIDER` | Force provider: `anthropic`, `openai`, `ollama` | auto-detect |
+| `LLM_PROVIDER` | Force: `anthropic` / `openai` / `ollama` | auto-detect |
 | `LLM_MODEL` | Model name | provider default |
-| `LLM_BASE_URL` | Custom API base URL (OpenAI-compatible) | — |
+| `LLM_BASE_URL` | Custom API base URL | — |
 | `AGENT_BINARY` | Coding agent CLI binary | `claude` |
-| `PC_LOCALE` | Language: `en`, `tr` | `en` |
+| `CSNS_LOCALE` | Language: `en` / `tr` | `en` |
 
 ### Programmatic
 
 ```typescript
-import { Orchestrator } from 'project-consciousness/orchestrator';
+import { Orchestrator } from '@barissozen/csns/orchestrator';
+import { createProvider } from '@barissozen/csns/llm';
+import { TracerAgent } from '@barissozen/csns/agent';
 
+// Build
 const orchestrator = new Orchestrator({
   projectRoot: process.cwd(),
   llmProvider: 'openai',
   llmApiKey: 'sk-...',
-  llmModel: 'gpt-4o',
-  agentBinary: 'claude',
   locale: 'en',
   maxRetries: 3,
-  escalationThreshold: 0.4,
-  maxParallelAgents: 3,
   verbose: true,
 });
+await orchestrator.run('Build a REST API for todos');
 
-const session = await orchestrator.run('Build a REST API for todos');
+// Audit
+const tracer = new TracerAgent({
+  projectRoot: '/path/to/project',
+  llmProvider: createProvider(),
+});
+const report = await tracer.run();
 ```
 
 ---
 
-## Developer Notes
-
-### Project Structure
+## Project Structure
 
 ```
 src/
+├── bin/             CLI — csns (interactive REPL + non-interactive)
 ├── brief/           SmartBrief + BriefCollector
 ├── agent/           Agent Runner, Context Builder, Codebase Reader
-│   └── tracer/      Tracer Agent (static + semantic + runtime analysis)
-├── orchestrator/    Planner, Evaluator, Escalator, Integration Evaluator
+│   └── tracer/      Static Analyzer, Semantic Analyzer, Runtime Tracer,
+│                    Reverse Engineer (audit engine)
+├── orchestrator/    Planner, Evaluator, Escalator, Scaffold, Audit Gate
 ├── memory/          4-file read/write layer
-├── llm/             LLM provider abstraction (Anthropic, OpenAI, Ollama)
+├── llm/             Provider abstraction (Anthropic, OpenAI, Ollama)
 ├── i18n/            Internationalization (en, tr)
-├── types/           TypeScript interfaces
-└── bin/             CLI (pc init/run/status/log)
+└── types/           TypeScript interfaces
 ```
 
-### Test
+## Tests
 
 ```bash
-npm test                                    # 229 tests, 19 suites
-npx vitest run tests/tracer-agent.test.ts   # specific suite
-SKIP_E2E=1 npm test                         # skip real CLI tests
+npm test                          # 229 tests, 19 suites
+SKIP_E2E=1 npm test               # skip real CLI tests
 ```
 
-TypeScript strict mode, 0 errors. Vitest for testing.
-
-### Stack
-
-- **TypeScript + Node.js** — strict mode, ESM
-- **LLM Providers** — Anthropic SDK, OpenAI API, Ollama REST (pluggable)
-- **Agent Execution** — Claude Code CLI (configurable)
-- **Testing** — Vitest (229 tests)
-- **Storage** — File system (markdown, no DB)
-
-### Design Principles
+## Design Principles
 
 1. **Memory-First** — Every decision leaves a trace in files
 2. **Fail-Safe** — When in doubt, ask the human
 3. **Append-Only** — DECISIONS.md is never edited
-4. **Minimal** — File system is enough, no DB needed
-5. **Human-Readable** — All state is markdown
-6. **Provider-Agnostic** — Works with any LLM, any agent CLI
+4. **Provider-Agnostic** — Any LLM, any agent CLI
+5. **Acknowledged vs Real** — Design decisions ≠ bugs
 
-### Contributing
+## Contributing
 
 1. Fork → branch → test → PR
 2. `npm test` must pass
-3. `npx tsc --noEmit` must show 0 errors
+3. `npx tsc --noEmit` — 0 errors
 4. Conventional commits (`feat:`, `fix:`, `docs:`)
 
 ## License
