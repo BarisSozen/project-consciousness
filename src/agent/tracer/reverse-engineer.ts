@@ -393,6 +393,10 @@ export class ReverseEngineer {
           const name = rnMatch[1]!;
           if (['async', 'return', 'const', 'let', 'var', 'function', 'if', 'else', 'try', 'catch'].includes(name)) continue;
           if (name.length < 2) continue;
+          // Skip GraphQL resolver parameter names — these are not resolver functions
+          if (['args', 'context', 'parent', 'root', 'info', '_parent', '_args', '_context', '_root', '__'].includes(name)) continue;
+          // Skip common destructured arg names that regex picks up
+          if (/^_/.test(name) && name.length <= 7) continue;
           const trigger = `${isQuery ? 'Query' : 'Mutation'} ${name}`;
           const chain = this.buildChainFromRoute(
             trigger, routeFile, classifications, contents, edges ?? []
@@ -631,6 +635,9 @@ export class ReverseEngineer {
       if (!flow.complete) {
         // "inline logic" in GraphQL resolvers is common — acknowledge
         const isInlineResolver = isGraphQL && flow.gaps.some(g => g.includes('inline'));
+        // "controller → repo direct" in GraphQL is same as layer-skip — acknowledge
+        const isResolverDirectDb = isGraphQL && flow.gaps.some(g => g.includes('service layer skipped') || g.includes('repository directly'));
+        const shouldAcknowledge = isInlineResolver || isResolverDirectDb;
         violations.push({
           type: 'coupling-violation',
           severity: 'info',
@@ -638,8 +645,10 @@ export class ReverseEngineer {
           file: flowFile,
           evidence: flow.gaps.join('; '),
           expectedBehavior: 'Complete chain: route → middleware → service → repository → response',
-          acknowledged: isInlineResolver,
-          acknowledgeReason: isInlineResolver ? 'GraphQL resolver with inline logic — common in resolver-first pattern' : undefined,
+          acknowledged: shouldAcknowledge,
+          acknowledgeReason: shouldAcknowledge
+            ? 'GraphQL resolver-first architecture — direct DB access is a conscious pattern'
+            : undefined,
         });
       }
     }
@@ -1005,6 +1014,15 @@ Only report issues you're confident about. Empty array if none found.`;
     const decisionsImpl = decisionAudit.filter(d => d.status === 'implemented').length;
     const completeFlows = dataFlows.filter(f => f.complete).length;
 
+    // For incomplete flow ratio, only count flows whose violations are NOT acknowledged
+    const acknowledgedFlowTriggers = new Set(
+      violations.filter(v => v.acknowledged && v.type === 'coupling-violation')
+        .map(v => v.description.match(/^(.+?):/)?.[1] ?? '')
+    );
+    const unacknowledgedIncomplete = dataFlows.filter(f =>
+      !f.complete && !acknowledgedFlowTriggers.has(f.trigger)
+    ).length;
+
     // Health score: 100 base, subtract for UNACKNOWLEDGED issues — scaled by project size
     const fileCount = classifications.filter(c => c.layer !== 'test' && c.layer !== 'type').length;
     const scaleFactor = Math.max(1, Math.log10(fileCount || 1));
@@ -1018,10 +1036,11 @@ Only report issues you're confident about. Empty array if none found.`;
     health -= realViolations.filter(v => v.severity === 'info').length * (0.5 / scaleFactor);
     health -= decisionAudit.filter(d => d.status === 'contradicted').length * 15;
     health -= decisionAudit.filter(d => d.status === 'not-found').length * 3;
-    const incompleteRatio = dataFlows.length > 0
-      ? (dataFlows.length - completeFlows) / dataFlows.length
+    // Only unacknowledged incomplete flows penalize health
+    const unackIncompleteRatio = dataFlows.length > 0
+      ? unacknowledgedIncomplete / dataFlows.length
       : 0;
-    health -= Math.round(incompleteRatio * 15);
+    health -= Math.round(unackIncompleteRatio * 15);
 
     return {
       totalFiles: classifications.length,
