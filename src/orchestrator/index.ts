@@ -8,3 +8,5 @@ export { RecoveryManager } from './recovery.js';
 export { IntegrationEvaluator } from './integration-evaluator.js';
 export { AuditGate } from './audit-gate.js';
 export { scaffoldProject } from './scaffold.js';
+export { SmartScaffold } from './smart-scaffold.js';
+export { EntityDetector } from './entity-detector.js';
