@@ -12,3 +12,6 @@ export { SmartScaffold } from './smart-scaffold.js';
 export { EntityDetector } from './entity-detector.js';
 export { PRReviewer } from './pr-reviewer.js';
 export { VerifiedBuildPipeline, verifiedStep } from './verified-build.js';
+export { DeployGenerator } from './deploy-generator.js';
+export { APIDocsGenerator } from './api-docs-generator.js';
+export { GitAuto } from './git-auto.js';

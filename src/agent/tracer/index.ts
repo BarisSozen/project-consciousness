@@ -20,3 +20,6 @@ export { CrossFileChecker } from './cross-file-checker.js';
 export type { CrossFileReport, ValueMismatch } from './cross-file-checker.js';
 export { LLMOutputGuard } from './llm-output-guard.js';
 export type { GuardReport, GuardFinding } from './llm-output-guard.js';
+export { AutoFixEngine } from './auto-fix.js';
+export { CVEScanner } from './cve-scanner.js';
+export { PerformanceBudget } from './performance-budget.js';

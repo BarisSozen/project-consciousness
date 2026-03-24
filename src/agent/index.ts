@@ -15,3 +15,6 @@ export { SecurityScanner } from './tracer/index.js';
 export { ASTAnalyzer } from './tracer/index.js';
 export { CrossFileChecker } from './tracer/index.js';
 export { LLMOutputGuard } from './tracer/index.js';
+export { AutoFixEngine } from './tracer/index.js';
+export { CVEScanner } from './tracer/index.js';
+export { PerformanceBudget } from './tracer/index.js';
