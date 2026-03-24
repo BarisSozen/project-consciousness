@@ -265,6 +265,35 @@ async function cmdHealth(config: OrchestratorConfig): Promise<void> {
   console.log();
 }
 
+function printInteractiveMenu(): void {
+  console.log(`
+  ╭──────────────────────────────────────────╮
+  │  What do you want to do?                 │
+  ├──────────────────────────────────────────┤
+  │                                          │
+  │  🔨 Build                                │
+  │    /new [brief]     Create a new project │
+  │                                          │
+  │  🔍 Analyze                              │
+  │    /audit           Full architecture    │
+  │                     audit (5 layers)     │
+  │    /review          Review git changes   │
+  │    /review --all    All uncommitted      │
+  │    /trace           Deep 4-layer trace   │
+  │                                          │
+  │  📊 Status                               │
+  │    /status          Show STATE.md        │
+  │    /log             Show DECISIONS.md    │
+  │    /health          Check LLM + tools    │
+  │                                          │
+  │  ⚙️  Other                               │
+  │    /help            Full help text       │
+  │    /quit            Exit                 │
+  │                                          │
+  ╰──────────────────────────────────────────╯
+`);
+}
+
 function printHelp(): void {
   console.log(`
   Commands:
@@ -296,7 +325,7 @@ function printBanner(): void {
   ║   Never-forgetting System                    ║
   ╚══════════════════════════════════════════════╝
 
-  Type /help for commands, /quit to exit.
+  Type / for commands, /quit to exit.
 `);
 }
 
@@ -336,8 +365,8 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdLog();
       } else if (input === '/health') {
         await cmdHealth(config);
-      } else if (input === '/help' || input === '/?') {
-        printHelp();
+      } else if (input === '/help' || input === '/?' || input === '/') {
+        printInteractiveMenu();
       } else if (input === '/quit' || input === '/exit' || input === '/q') {
         console.log('\n  👋 Bye.\n');
         process.exit(0);
