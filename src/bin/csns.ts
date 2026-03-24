@@ -31,7 +31,10 @@ import type { Locale } from '../i18n/index.js';
 import type { OrchestratorConfig } from '../types/index.js';
 import type { LLMProvider } from '../llm/types.js';
 
-const VERSION = '0.9.5';
+// Version'ı package.json'dan oku — hardcoded tutmak sync sorununa neden olur
+import { createRequire } from 'node:module';
+const __require = createRequire(import.meta.url);
+const VERSION = (__require('../../package.json') as { version: string }).version;
 const PROJECT_ROOT = process.cwd();
 
 // ── Config ────────────────────────────────────────────────
