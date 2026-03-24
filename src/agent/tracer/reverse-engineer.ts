@@ -134,6 +134,9 @@ const PATH_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number }>
   { pattern: /\bhook[s]?\b/i, layer: 'service', weight: 5 },            // React hooks = service-like
   { pattern: /\bprovider[s]?\b/i, layer: 'middleware', weight: 5 },     // React providers = middleware-like
   { pattern: /\bpage[s]?\b|\/app\//i, layer: 'route', weight: 5 },      // Next.js pages/app = route
+  { pattern: /\bstore[s]?\b/i, layer: 'service', weight: 7 },           // State stores (Zustand, Redux) = service
+  { pattern: /\bapi\b/i, layer: 'service', weight: 5 },                 // API client modules = service-like
+  { pattern: /\b(tabs)\b|\(.*\)\//i, layer: 'route', weight: 7 },       // Expo Router group routes: (tabs), (auth)
   { pattern: /\bindex\.(ts|js)$/, layer: 'entry', weight: 3 },
 ];
 
@@ -187,6 +190,15 @@ const CONTENT_SIGNALS: Array<{ pattern: RegExp; layer: ArchLayer; weight: number
   // React/Frontend components
   { pattern: /export\s+(?:default\s+)?function\s+\w+.*\)\s*{\s*return\s*[(<]|React\.FC|JSX\.Element/, layer: 'controller', weight: 4, signal: 'React component' },
   { pattern: /use[A-Z]\w+\s*\(|useState|useEffect|useCallback|useMemo/, layer: 'service', weight: 4, signal: 'React hook (service-like)' },
+
+  // State management (Zustand, Redux, MobX)
+  { pattern: /create\s*\(\s*\(?set|zustand|useStore|configureStore|createSlice/, layer: 'service', weight: 8, signal: 'State store (Zustand/Redux)' },
+
+  // API client modules
+  { pattern: /useMutation|useQuery|graphqlClient|fetchGraphQL|gql\s*`/, layer: 'service', weight: 6, signal: 'API/GraphQL client' },
+
+  // Expo Router pages
+  { pattern: /export\s+default\s+function\s+\w+.*Screen|export\s+default\s+function\s+\w+.*Page/, layer: 'route', weight: 7, signal: 'Screen/Page component (Expo/RN)' },
 ];
 
 /** Architecture decision keywords to search in code */
