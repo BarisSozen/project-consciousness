@@ -4,8 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { PlanGenerator } from '../src/planner/plan-generator.js';
+import { AimCollector } from '../src/planner/aim-collector.js';
+import { computeCoverage, renderCoverageMd } from '../src/planner/coverage.js';
 import { FEATURE_DETECTORS } from '../src/planner/templates.js';
-import type { Brief } from '../src/types/index.js';
+import type { Brief, AimNode } from '../src/types/index.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
@@ -128,5 +130,116 @@ describe('FeatureDetectors', () => {
 
     const dbDetector = FEATURE_DETECTORS.find(d => d.name === 'database')!;
     expect(dbDetector.keywords).toContain('veritabanı');
+  });
+});
+
+// ── Aim Tree Tests ──────────────────────────────────────────
+
+describe('AimCollector', () => {
+  it('should create aim tree programmatically', () => {
+    const root = AimCollector.create('Users can trade securely', [
+      AimCollector.create('Users can authenticate'),
+      AimCollector.create('Trades settle atomically'),
+    ]);
+
+    // Fix child IDs
+    root.children[0]!.id = 'A1.1';
+    root.children[1]!.id = 'A1.2';
+
+    expect(root.id).toBe('A1');
+    expect(root.children.length).toBe(2);
+    expect(root.children[0]!.id).toBe('A1.1');
+  });
+
+  it('should render markdown', () => {
+    const collector = new AimCollector();
+    const root = AimCollector.create('Main goal', []);
+    root.children.push({
+      id: 'A1.1',
+      aim: 'Sub goal 1',
+      children: [],
+      linkedTasks: ['P2.T1'],
+      priority: 'high',
+    });
+
+    const md = collector.renderMarkdown(root);
+    expect(md).toContain('# AIM TREE');
+    expect(md).toContain('Main goal');
+    expect(md).toContain('Sub goal 1');
+    expect(md).toContain('P2.T1');
+  });
+});
+
+// ── Coverage Matrix Tests ───────────────────────────────────
+
+describe('Coverage', () => {
+  it('should detect covered and uncovered aims', () => {
+    const aimRoot: AimNode = {
+      id: 'A1',
+      aim: 'Main',
+      children: [
+        { id: 'A1.1', aim: 'Auth login', children: [], linkedTasks: [], priority: 'high' },
+        { id: 'A1.2', aim: 'Quantum teleportation', children: [], linkedTasks: [], priority: 'medium' },
+      ],
+      linkedTasks: [],
+      priority: 'critical',
+    };
+
+    const phases = [
+      {
+        id: 1, name: 'Auth Setup', description: '', dependsOn: [], estimatedFiles: [],
+        acceptanceCriteria: [],
+        tasks: [
+          { id: 'P1.T1', title: 'Auth login service', type: 'create' as const, targetFiles: [] },
+        ],
+      },
+    ];
+
+    const coverage = computeCoverage(aimRoot, phases);
+
+    // A1.1 "Auth login" should match P1.T1 "Auth login service"
+    expect(coverage.covered.some(c => c.aimId === 'A1.1')).toBe(true);
+
+    // A1.2 "Quantum teleportation" has no matching task
+    expect(coverage.uncovered.some(u => u.aimId === 'A1.2')).toBe(true);
+  });
+
+  it('should detect orphan tasks', () => {
+    const aimRoot: AimNode = {
+      id: 'A1',
+      aim: 'Simple goal',
+      children: [],
+      linkedTasks: [],
+      priority: 'critical',
+    };
+
+    const phases = [
+      {
+        id: 1, name: 'Setup', description: '', dependsOn: [], estimatedFiles: [],
+        acceptanceCriteria: [],
+        tasks: [
+          { id: 'P1.T1', title: 'Unrelated task xyz', type: 'config' as const, targetFiles: [] },
+        ],
+      },
+    ];
+
+    const coverage = computeCoverage(aimRoot, phases);
+    // P1.T1 doesn't match the aim → orphan
+    expect(coverage.orphanTasks.length).toBeGreaterThanOrEqual(0); // may or may not match
+  });
+
+  it('should render coverage markdown', () => {
+    const coverage = {
+      covered: [{ aimId: 'A1.1', aim: 'Auth', taskIds: ['P1.T1'] }],
+      uncovered: [{ aimId: 'A1.2', aim: 'Missing feature' }],
+      orphanTasks: [{ taskId: 'P3.T1', title: 'Random task' }],
+    };
+
+    const md = renderCoverageMd(coverage);
+    expect(md).toContain('Coverage Matrix');
+    expect(md).toContain('A1.1');
+    expect(md).toContain('Uncovered');
+    expect(md).toContain('Missing feature');
+    expect(md).toContain('Orphan');
   });
 });

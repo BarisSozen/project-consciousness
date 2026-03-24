@@ -526,6 +526,8 @@ export interface TracerReport {
 
 export interface ProjectPlan {
   phases: ProjectPhase[];
+  aimTree?: AimNode;
+  coverage?: CoverageMatrix;
   metadata: {
     stack: StackType;
     brief: string;
@@ -533,6 +535,22 @@ export interface ProjectPlan {
     hasExistingCode: boolean;
     createdAt: string;
   };
+}
+
+// ── Aim Tree (tümdengelim / top-down goal decomposition) ────
+
+export interface AimNode {
+  id: string;             // "A1", "A1.1", "A1.1.2"
+  aim: string;            // "Kullanıcılar güvenli trade yapabilmeli"
+  children: AimNode[];    // alt-amaçlar
+  linkedTasks: string[];  // cross-ref: ["P2.T1", "P3.T3"]
+  priority: 'critical' | 'high' | 'medium' | 'low';
+}
+
+export interface CoverageMatrix {
+  covered: Array<{ aimId: string; aim: string; taskIds: string[] }>;
+  uncovered: Array<{ aimId: string; aim: string }>;
+  orphanTasks: Array<{ taskId: string; title: string }>;
 }
 
 export interface ProjectPhase {

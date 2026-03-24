@@ -102,11 +102,42 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
 
   // ── Phase 2: Plan Generation (LLM gerektirmez) ───────────
   if (collectedBrief) {
-    const { PlanGenerator } = await import('../planner/index.js');
+    const { PlanGenerator, AimCollector, computeCoverage, printCoverage, renderCoverageMd } =
+      await import('../planner/index.js');
+    const { writeFile: wf } = await import('node:fs/promises');
+
+    // 2a. Tech plan
     const planner = new PlanGenerator(PROJECT_ROOT);
     const plan = await planner.generate(collectedBrief);
-
     planner.printPlan(plan);
+
+    // 2b. Aim tree — tümdengelim planlama
+    const wantAims = await askUser(
+      '  🎯 Amaç ağacı oluşturmak ister misin? (tümdengelim planlama) (e/h) > '
+    );
+
+    if (wantAims.trim().toLowerCase() === 'e' || wantAims.trim().toLowerCase() === 'y') {
+      const aimCollector = new AimCollector();
+      const aimTree = aimCollector.collect ? await aimCollector.collect() : undefined;
+
+      if (aimTree) {
+        plan.aimTree = aimTree;
+
+        // Coverage matrix hesapla
+        plan.coverage = computeCoverage(aimTree, plan.phases);
+
+        // Göster
+        aimCollector.printTree(aimTree);
+        printCoverage(plan.coverage);
+
+        // AIMS.md yaz
+        const aimsMd = aimCollector.renderMarkdown(aimTree) + '\n\n' + renderCoverageMd(plan.coverage);
+        await wf(join(PROJECT_ROOT, 'AIMS.md'), aimsMd, 'utf-8');
+        console.log('  ✅ AIMS.md yazıldı\n');
+      }
+    }
+
+    // PLAN.md yaz
     await planner.writePlan(plan);
     console.log('  ✅ PLAN.md yazıldı\n');
 
@@ -114,13 +145,13 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
     const answer = await askUser(
       '  Ne yapmak istersin?\n' +
       '    1. 🚀 Execute — LLM ile planı çalıştır (API key gerekir)\n' +
-      '    2. ✏️  Edit — PLAN.md\'yi düzenle, sonra tekrar gel\n' +
+      '    2. ✏️  Edit — PLAN.md / AIMS.md düzenle, sonra tekrar gel\n' +
       '    3. ✅ Done — Sadece planla, şimdilik yeterli\n' +
       '  > '
     );
 
     if (answer.trim() === '2' || answer.trim().toLowerCase() === 'edit') {
-      console.log('  📝 PLAN.md dosyasını düzenle, sonra /new ile tekrar çalıştır.\n');
+      console.log('  📝 PLAN.md / AIMS.md dosyalarını düzenle, sonra /new ile tekrar çalıştır.\n');
       return;
     }
 
