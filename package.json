@@ -1,5 +1,5 @@
 {
-  "name": "csns",
+  "name": "@barissozen/csns",
   "version": "0.6.0",
   "description": "CSNS — Code-aware Self-correcting Never-forgetting System",
   "type": "module",
