@@ -31,7 +31,7 @@ import type { Locale } from '../i18n/index.js';
 import type { OrchestratorConfig } from '../types/index.js';
 import type { LLMProvider } from '../llm/types.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.9.5';
 const PROJECT_ROOT = process.cwd();
 
 // ── Config ────────────────────────────────────────────────
@@ -75,8 +75,11 @@ function getProvider(config: OrchestratorConfig): LLMProvider | null {
 
 async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> {
   if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
-    console.error('  ❌ LLM API key required. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_HOST');
-    return;
+    config = await ensureApiKey(config);
+    if (!config.llmApiKey && !process.env['OLLAMA_HOST']) {
+      console.error('  ❌ LLM API key required for /new. Run setup or set env vars.\n');
+      return;
+    }
   }
 
   // If no brief given, collect interactively
@@ -462,17 +465,128 @@ async function ensureMemoryFiles(stack?: string): Promise<void> {
   await ensure('STATE.md', `# STATE\n\n## Current Phase: \`initialization\`\n\n## Iteration: 0\n\n## Active Tasks\n_none_\n\n## Completed Tasks\n_none yet_\n\n## Blocked\n_none_\n\n## Last Updated: ${new Date().toISOString()}\n`);
 }
 
+// ── First-Run Setup ──────────────────────────────────────
+
+async function ensureApiKey(config: OrchestratorConfig): Promise<OrchestratorConfig> {
+  // Already has a key
+  if (config.llmApiKey || process.env['OLLAMA_HOST']) return config;
+
+  // Check if .env exists with a key
+  try {
+    const envContent = await readFile(join(PROJECT_ROOT, '.env'), 'utf-8');
+    const match = envContent.match(/^(ANTHROPIC_API_KEY|OPENAI_API_KEY)=(.+)$/m);
+    if (match?.[2]) {
+      process.env[match[1]!] = match[2];
+      return { ...config, llmApiKey: match[2] };
+    }
+  } catch { /* no .env */ }
+
+  // Interactive setup
+  console.log(`
+  ╭──────────────────────────────────────────╮
+  │  🔑 First-time setup                    │
+  ├──────────────────────────────────────────┤
+  │                                          │
+  │  MANDOSI needs an LLM API key for:      │
+  │  • /new (project generation)             │
+  │  • /trace (semantic analysis)            │
+  │                                          │
+  │  /audit, /review, /health work           │
+  │  WITHOUT an API key.                     │
+  │                                          │
+  │  Choose your provider:                   │
+  │   1. Anthropic (Claude)                  │
+  │   2. OpenAI (GPT)                        │
+  │   3. Ollama (local, no key needed)       │
+  │   4. Skip for now                        │
+  │                                          │
+  ╰──────────────────────────────────────────╯
+`);
+
+  const { createInterface: rlCreate } = await import('node:readline');
+  const rl = rlCreate({ input: process.stdin, output: process.stdout });
+  const ask = (q: string): Promise<string> => new Promise(r => rl.question(q, r));
+
+  const choice = await ask('  Choice (1-4): ');
+
+  if (choice.trim() === '4' || !choice.trim()) {
+    rl.close();
+    console.log('  ⏭️  Skipped. You can set API keys later in .env\n');
+    return config;
+  }
+
+  if (choice.trim() === '3') {
+    const host = await ask('  Ollama host (Enter for http://localhost:11434): ');
+    const ollamaHost = host.trim() || 'http://localhost:11434';
+    process.env['OLLAMA_HOST'] = ollamaHost;
+    process.env['LLM_PROVIDER'] = 'ollama';
+
+    // Save to .env
+    await appendEnv(`LLM_PROVIDER=ollama\nOLLAMA_HOST=${ollamaHost}\n`);
+    rl.close();
+    console.log(`  ✅ Ollama configured (${ollamaHost}). Saved to .env\n`);
+    return { ...config, llmProvider: 'ollama', llmBaseUrl: ollamaHost };
+  }
+
+  const providerName = choice.trim() === '1' ? 'Anthropic' : 'OpenAI';
+  const envKey = choice.trim() === '1' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  const hint = choice.trim() === '1' ? 'sk-ant-...' : 'sk-...';
+
+  const apiKey = await ask(`  ${providerName} API key (${hint}): `);
+  rl.close();
+
+  if (!apiKey.trim()) {
+    console.log('  ⏭️  No key entered. Skipped.\n');
+    return config;
+  }
+
+  // Save to .env
+  process.env[envKey] = apiKey.trim();
+  const providerType = choice.trim() === '1' ? 'anthropic' : 'openai';
+  await appendEnv(`LLM_PROVIDER=${providerType}\n${envKey}=${apiKey.trim()}\n`);
+
+  console.log(`  ✅ ${providerName} configured. Saved to .env\n`);
+  console.log(`  \x1b[2m💡 Add .env to .gitignore to keep your key safe\x1b[0m\n`);
+
+  return {
+    ...config,
+    llmApiKey: apiKey.trim(),
+    llmProvider: providerType as OrchestratorConfig['llmProvider'],
+  };
+}
+
+async function appendEnv(content: string): Promise<void> {
+  const envPath = join(PROJECT_ROOT, '.env');
+  const { writeFile: wf, readFile: rf } = await import('node:fs/promises');
+  let existing = '';
+  try { existing = await rf(envPath, 'utf-8'); } catch { /* no .env */ }
+  await wf(envPath, existing ? existing.trimEnd() + '\n' + content : content);
+
+  // Auto-add .env to .gitignore if not already there
+  const gitignorePath = join(PROJECT_ROOT, '.gitignore');
+  try {
+    let gi = '';
+    try { gi = await rf(gitignorePath, 'utf-8'); } catch { /* no .gitignore */ }
+    if (!gi.includes('.env')) {
+      await wf(gitignorePath, gi ? gi.trimEnd() + '\n.env\n' : '.env\n');
+    }
+  } catch { /* ignore */ }
+}
+
 // ── Main ──────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const config = buildConfig();
+  let config = buildConfig();
   const [command, ...rest] = process.argv.slice(2);
 
+  // Only run interactive setup if entering REPL (no command) or using /new
+  if (!command || command === 'new') {
+    config = await ensureApiKey(config);
+  }
+
   if (command) {
-    // Non-interactive: csns new "Build a todo API"
     await nonInteractive(command, rest.join(' '), config);
   } else {
-    // Interactive REPL
     await repl(config);
   }
 }
