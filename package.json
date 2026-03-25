@@ -1,6 +1,6 @@
 {
   "name": "@barissozen/csns",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "CSNS — Code-aware Self-correcting Never-forgetting System",
   "type": "module",
   "main": "dist/index.js",
@@ -41,6 +41,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE",
     ".env.example"

@@ -618,6 +618,7 @@ function printHelp(): void {
     /status         Show STATE.md
     /log            Show DECISIONS.md
     /health         Check LLM, agent CLI, and memory files
+    /setup          Install Claude Code skills (mandosi:audit, etc.)
     /help           This message
     /quit           Exit
 
@@ -803,6 +804,8 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdLog();
       } else if (input === '/health') {
         await cmdHealth(config);
+      } else if (input === '/setup') {
+        await cmdSetup();
       } else if (input === '/help') {
         printInteractiveMenu();
       } else if (input === '/quit' || input === '/exit' || input === '/q') {
@@ -867,6 +870,9 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
     case '-v':
       console.log(`csns v${VERSION}`);
       break;
+    case 'setup':
+      await cmdSetup();
+      break;
     case 'help':
     case '--help':
     case '-h':
@@ -877,6 +883,78 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
       console.error(`  ❓ Unknown command: ${command}. Run 'csns help' for usage.`);
       process.exit(1);
   }
+}
+
+// ── Setup (install Claude Code skills) ───────────────────
+
+async function cmdSetup(): Promise<void> {
+  const { writeFile: wf, mkdir, readFile: rf } = await import('node:fs/promises');
+  const { homedir } = await import('node:os');
+  const { dirname, resolve } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const home = homedir();
+  const __filename = fileURLToPath(import.meta.url);
+  const packageRoot = resolve(dirname(__filename), '..', '..');
+  const skillsSource = join(packageRoot, 'skills');
+
+  // Check if skills directory exists in package
+  try {
+    const { statSync } = await import('node:fs');
+    if (!statSync(skillsSource).isDirectory()) throw new Error();
+  } catch {
+    console.error('  ❌ Skills directory not found in package. Reinstall: npm install -g @barissozen/csns@latest');
+    return;
+  }
+
+  console.log('  🔧 MANDOSI Claude Code Skills Setup\n');
+
+  // Target directories
+  const commandsTarget = join(home, '.claude', 'commands', 'mandosi');
+  const skillsTarget = join(home, '.claude', 'skills', 'surgical-correction');
+  const refsTarget = join(skillsTarget, 'references');
+
+  // Create directories
+  await mkdir(commandsTarget, { recursive: true });
+  await mkdir(refsTarget, { recursive: true });
+
+  // Copy command skills
+  const commands = ['audit.md', 'deep-audit.md', 'new.md', 'surgical.md'];
+  for (const cmd of commands) {
+    const src = join(skillsSource, 'commands', 'mandosi', cmd);
+    try {
+      const content = await rf(src, 'utf-8');
+      await wf(join(commandsTarget, cmd), content, 'utf-8');
+      console.log(`  ✅ /mandosi:${cmd.replace('.md', '')}`);
+    } catch {
+      console.log(`  ⚠️ Skipped ${cmd} (not found in package)`);
+    }
+  }
+
+  // Copy surgical-correction skill
+  const skillFiles = [
+    { src: 'skills/surgical-correction/SKILL.md', dst: join(skillsTarget, 'SKILL.md') },
+    { src: 'skills/surgical-correction/references/correction-taxonomy.md', dst: join(refsTarget, 'correction-taxonomy.md') },
+    { src: 'skills/surgical-correction/references/mission-alignment-filters.md', dst: join(refsTarget, 'mission-alignment-filters.md') },
+  ];
+
+  for (const { src, dst } of skillFiles) {
+    try {
+      const content = await rf(join(skillsSource, src), 'utf-8');
+      await wf(dst, content, 'utf-8');
+      console.log(`  ✅ ${src.split('/').pop()}`);
+    } catch {
+      console.log(`  ⚠️ Skipped ${src} (not found)`);
+    }
+  }
+
+  console.log(`\n  🎉 Setup complete! Available commands in Claude Code:`);
+  console.log(`     /mandosi:audit        — Architecture audit`);
+  console.log(`     /mandosi:deep-audit   — Type flow + complexity + coverage`);
+  console.log(`     /mandosi:new          — Build a new project from idea`);
+  console.log(`     /mandosi:surgical     — Post-audit fix advisor + implementer`);
+  console.log(`\n  📁 Installed to: ${commandsTarget}`);
+  console.log(`     and: ${skillsTarget}\n`);
 }
 
 // ── Helpers ───────────────────────────────────────────────
