@@ -10,60 +10,68 @@
 
 import { createInterface } from 'node:readline';
 import { readFile, writeFile } from 'node:fs/promises';
+import { interactiveSelect, inferRecommendations } from '../orchestrator/interactive-selector.js';
+import type { SelectQuestion } from '../orchestrator/interactive-selector.js';
 import type { ArchitectureDecisions, AuthStrategy, DatabaseChoice, ApiStyle, FrontendChoice, DeployTarget } from '../types/index.js';
 
 const QUESTIONS: Array<{
   key: keyof ArchitectureDecisions;
   question: string;
-  options: Array<{ key: string; label: string }>;
+  icon: string;
+  options: Array<{ key: string; label: string; description?: string }>;
 }> = [
   {
     key: 'auth',
-    question: '🔐 Auth stratejisi?',
+    question: 'Auth stratejisi',
+    icon: '🔐',
     options: [
-      { key: 'jwt', label: 'JWT (stateless tokens)' },
-      { key: 'session', label: 'Session (server-side)' },
-      { key: 'oauth', label: 'OAuth (Google/GitHub)' },
-      { key: 'api-key', label: 'API Key (simple)' },
-      { key: 'none', label: 'Auth yok' },
+      { key: 'jwt', label: 'JWT', description: 'Stateless tokens — scalable, API-friendly' },
+      { key: 'session', label: 'Session', description: 'Server-side sessions — simple, stateful' },
+      { key: 'oauth', label: 'OAuth', description: 'Google/GitHub login — user-friendly' },
+      { key: 'api-key', label: 'API Key', description: 'Simple key auth — for service-to-service' },
+      { key: 'none', label: 'No Auth', description: 'Public API — no authentication' },
     ],
   },
   {
     key: 'database',
-    question: '🗄️  Database?',
+    question: 'Database',
+    icon: '🗄️',
     options: [
-      { key: 'postgresql', label: 'PostgreSQL' },
-      { key: 'mongodb', label: 'MongoDB' },
-      { key: 'sqlite', label: 'SQLite' },
-      { key: 'in-memory', label: 'In-memory (DB yok)' },
+      { key: 'postgresql', label: 'PostgreSQL', description: 'Production-ready relational DB' },
+      { key: 'mongodb', label: 'MongoDB', description: 'Document-based — flexible schema' },
+      { key: 'sqlite', label: 'SQLite', description: 'File-based — zero setup, great for prototypes' },
+      { key: 'in-memory', label: 'In-memory', description: 'No database — data resets on restart' },
     ],
   },
   {
     key: 'apiStyle',
-    question: '🌐 API stili?',
+    question: 'API stili',
+    icon: '🌐',
     options: [
-      { key: 'rest', label: 'REST' },
-      { key: 'graphql', label: 'GraphQL' },
-      { key: 'trpc', label: 'tRPC' },
+      { key: 'rest', label: 'REST', description: 'Standard HTTP endpoints — universal' },
+      { key: 'graphql', label: 'GraphQL', description: 'Query language — flexible, typed' },
+      { key: 'trpc', label: 'tRPC', description: 'End-to-end type-safe — TypeScript native' },
     ],
   },
   {
     key: 'frontend',
-    question: '🖥️  Frontend?',
+    question: 'Frontend',
+    icon: '🖥️',
     options: [
-      { key: 'react', label: 'React' },
-      { key: 'vue', label: 'Vue' },
-      { key: 'nextjs', label: 'Next.js' },
-      { key: 'api-only', label: 'Sadece API (frontend yok)' },
+      { key: 'api-only', label: 'API Only', description: 'No frontend — backend service only' },
+      { key: 'react', label: 'React', description: 'SPA with React — rich client-side' },
+      { key: 'nextjs', label: 'Next.js', description: 'Full-stack React with SSR/SSG' },
+      { key: 'vue', label: 'Vue', description: 'Progressive framework — easy to learn' },
     ],
   },
   {
     key: 'deployment',
-    question: '🚀 Deployment hedefi?',
+    question: 'Deployment',
+    icon: '🚀',
     options: [
-      { key: 'local', label: 'Local development' },
-      { key: 'docker', label: 'Docker / Docker Compose' },
-      { key: 'cloud', label: 'Cloud (AWS/GCP/Vercel)' },
+      { key: 'docker', label: 'Docker', description: 'Containerized — portable, reproducible' },
+      { key: 'local', label: 'Local only', description: 'Development setup — no deploy config' },
+      { key: 'cloud', label: 'Cloud', description: 'AWS/GCP/Vercel — production hosting' },
     ],
   },
 ];
@@ -77,16 +85,29 @@ export class ArchitectAgent {
   }
 
   /**
-   * İnteraktif CLI ile kullanıcıdan mimari kararları topla
+   * İnteraktif CLI ile kullanıcıdan mimari kararları topla.
+   * Arrow-key selection with smart defaults inferred from brief.
    */
-  async runInteractive(): Promise<ArchitectureDecisions> {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const askFn = (prompt: string): Promise<string> =>
-      new Promise((resolve) => rl.question(prompt, resolve));
-
+  async runInteractive(brief?: string): Promise<ArchitectureDecisions> {
     console.log('\n╔══════════════════════════════════════════════╗');
     console.log('║   ARCHITECT — Mimari Kararlar                 ║');
     console.log('╚══════════════════════════════════════════════╝\n');
+
+    // Infer smart defaults from brief
+    const recommendations = brief ? inferRecommendations(brief) : new Map<string, string>();
+
+    if (recommendations.size > 0) {
+      console.log('  \x1b[2m💡 Brief\'ten öneriler çıkarıldı (★ ile işaretli)\x1b[0m\n');
+    }
+
+    // Use interactive arrow-key selector if TTY, else fallback to readline
+    if (process.stdin.isTTY) {
+      return this.collectWithSelector(recommendations);
+    }
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const askFn = (prompt: string): Promise<string> =>
+      new Promise((resolve) => rl.question(prompt, resolve));
 
     try {
       return await this.collectAnswers(askFn);
@@ -144,6 +165,30 @@ export class ArchitectAgent {
   }
 
   // ── Private ─────────────────────────────────────────────
+
+  private async collectWithSelector(
+    recommendations: Map<string, string>
+  ): Promise<ArchitectureDecisions> {
+    const result: Record<string, string> = {};
+
+    for (const q of QUESTIONS) {
+      const recKey = recommendations.get(q.key);
+      const selectQuestion: SelectQuestion = {
+        title: q.question,
+        icon: q.icon,
+        options: q.options.map(o => ({
+          ...o,
+          recommended: o.key === recKey,
+        })),
+        allowOther: true,
+      };
+
+      const answer = await interactiveSelect(selectQuestion);
+      result[q.key] = answer.key;
+    }
+
+    return result as unknown as ArchitectureDecisions;
+  }
 
   private async collectAnswers(
     askFn: (prompt: string) => Promise<string>

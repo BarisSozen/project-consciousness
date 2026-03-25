@@ -20,6 +20,8 @@ export type { SpecialistDomain, SpecialistProfile, RoutingDecision, FocusedConte
 export { VerifiedCodePipeline } from './verified-code-pipeline.js';
 export type { CodePipelineResult, PipelineCheck } from './verified-code-pipeline.js';
 export { ContextAccumulator } from './context-accumulator.js';
+export { interactiveSelect, interactiveDecisions, inferRecommendations } from './interactive-selector.js';
+export type { SelectOption, SelectQuestion, SelectResult } from './interactive-selector.js';
 export { TaskSplitter } from './task-splitter.js';
 export type { SplitResult } from './task-splitter.js';
 export { ShipCheck } from './ship-check.js';
