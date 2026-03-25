@@ -28,3 +28,5 @@ export { ComplexityAnalyzer } from './complexity-analyzer.js';
 export { CoverageAnalyzer } from './coverage-analyzer.js';
 export { ConventionDetector } from './convention-detector.js';
 export { ASTCodeMod } from './ast-code-mod.js';
+export { SurgicalCorrector, printCorrectionPlan } from './surgical-corrector.js';
+export type { Correction, CorrectionLevel, CorrectionPlan, ProjectSoul } from './surgical-corrector.js';

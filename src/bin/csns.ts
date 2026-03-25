@@ -309,6 +309,21 @@ async function cmdAudit(config: OrchestratorConfig): Promise<void> {
 
   console.log(`\n  💯 Health Score: ${report.summary.healthScore}/100`);
   console.log('  ═══════════════════════════════════════════\n');
+
+  // Surgical Correction — post-audit correction plan
+  try {
+    const { SurgicalCorrector, printCorrectionPlan } = await import('../agent/tracer/surgical-corrector.js');
+    const corrector = new SurgicalCorrector(provider, (msg) => console.log(msg));
+    const plan = await corrector.analyze({
+      auditReport: report,
+      mission: memoryFiles.mission,
+      architecture: memoryFiles.architecture,
+      decisions: memoryFiles.decisions,
+    });
+    printCorrectionPlan(plan);
+  } catch (err) {
+    console.log(`  ⚠️ Surgical correction skipped: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 async function cmdTrace(config: OrchestratorConfig): Promise<void> {
@@ -410,7 +425,7 @@ async function cmdConventions(): Promise<void> {
   console.log('  ═══════════════════════════════════════════\n');
 }
 
-async function cmdDeepAudit(): Promise<void> {
+async function cmdDeepAudit(config?: OrchestratorConfig): Promise<void> {
   console.log('  🔬 Running deep audit (type-flow + complexity + coverage)...\n');
 
   const { TypeFlowAnalyzer } = await import('../agent/tracer/type-flow-analyzer.js');
@@ -487,6 +502,25 @@ async function cmdDeepAudit(): Promise<void> {
   console.log(`  🎯 OVERALL RISK: ${overallRisk}/100`);
   console.log(`  ⏱️ ${duration}ms`);
   console.log('  ═══════════════════════════════════════════\n');
+
+  // Surgical Correction — post-deep-audit correction plan
+  try {
+    const { SurgicalCorrector, printCorrectionPlan } = await import('../agent/tracer/surgical-corrector.js');
+    const provider = config ? getProvider(config) : null;
+    const memoryFiles = await readMemoryFiles();
+    const corrector = new SurgicalCorrector(provider, (msg) => console.log(msg));
+    const plan = await corrector.analyze({
+      typeFlow,
+      complexity,
+      coverage,
+      mission: memoryFiles.mission,
+      architecture: memoryFiles.architecture,
+      decisions: memoryFiles.decisions,
+    });
+    printCorrectionPlan(plan);
+  } catch (err) {
+    console.log(`  ⚠️ Surgical correction skipped: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 async function cmdStatus(): Promise<void> {
@@ -758,7 +792,7 @@ async function repl(config: OrchestratorConfig): Promise<void> {
       } else if (input === '/trace') {
         await cmdTrace(config);
       } else if (input === '/deep-audit') {
-        await cmdDeepAudit();
+        await cmdDeepAudit(config);
       } else if (input === '/conventions') {
         await cmdConventions();
       } else if (input === '/ship-check') {
@@ -811,7 +845,7 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
       await cmdTrace(config);
       break;
     case 'deep-audit':
-      await cmdDeepAudit();
+      await cmdDeepAudit(config);
       break;
     case 'conventions':
       await cmdConventions();
