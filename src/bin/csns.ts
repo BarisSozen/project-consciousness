@@ -7,6 +7,7 @@
  *
  * Commands:
  *   /new [brief]    → Start a new project (SmartBrief → Orchestrator)
+ *   /new --file X   → Load brief from a file
  *   /audit          → Reverse-engineer & audit current codebase
  *   /trace          → Run Tracer Agent (static + semantic + runtime + audit)
  *   /deep-audit     → Type-flow + complexity + coverage analysis
@@ -81,6 +82,30 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
   // ── Phase 1: Brief Collection (LLM gerektirmez) ──────────
   let resolvedBrief = brief.trim();
   let collectedBrief: import('../types/index.js').Brief | undefined;
+
+  // Support --file flag: mandosi new --file brief.md
+  const fileMatch = resolvedBrief.match(/--file\s+(\S+)/);
+  if (fileMatch?.[1]) {
+    try {
+      resolvedBrief = await readFile(join(PROJECT_ROOT, fileMatch[1]), 'utf-8');
+      console.log(`  📄 Brief loaded from ${fileMatch[1]} (${resolvedBrief.length} chars)\n`);
+    } catch {
+      console.error(`  ❌ Could not read file: ${fileMatch[1]}`);
+      return;
+    }
+  }
+
+  // Support piped stdin: echo "brief" | mandosi new
+  if (!resolvedBrief && !process.stdin.isTTY) {
+    const chunks: string[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk.toString());
+    }
+    resolvedBrief = chunks.join('').trim();
+    if (resolvedBrief) {
+      console.log(`  📄 Brief loaded from stdin (${resolvedBrief.length} chars)\n`);
+    }
+  }
 
   if (!resolvedBrief) {
     const { BriefCollector } = await import('../brief/index.js');
@@ -549,6 +574,7 @@ function printHelp(): void {
   console.log(`
   Commands:
     /new [brief]    Start a new project (interactive if no brief given)
+    /new --file X   Load brief from file (e.g., /new --file brief.md)
     /audit          Reverse-engineer & audit current codebase
     /review         Review staged git changes (security + architecture)
     /review --all   Review all uncommitted changes
