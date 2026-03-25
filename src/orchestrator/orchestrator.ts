@@ -12,6 +12,7 @@ import { Evaluator } from './evaluator.js';
 import { Escalator } from './escalator.js';
 import { AuditGate } from './audit-gate.js';
 import { ContextAccumulator } from './context-accumulator.js';
+import { TaskSplitter } from './task-splitter.js';
 import { ShipCheck } from './ship-check.js';
 import { resolveProvider } from '../llm/resolve.js';
 import { t, setLocale } from '../i18n/index.js';
@@ -36,6 +37,7 @@ export class Orchestrator {
   private escalator: Escalator;
   private auditGate: AuditGate;
   private contextAccumulator: ContextAccumulator;
+  private taskSplitter: TaskSplitter;
   private config: OrchestratorConfig;
   private steps: OrchestrationStep[] = [];
   private sessionId: string;
@@ -67,6 +69,7 @@ export class Orchestrator {
       (msg) => this.log(msg)
     );
     this.contextAccumulator = new ContextAccumulator(config.projectRoot);
+    this.taskSplitter = new TaskSplitter();
     this.sessionId = `session-${Date.now()}`;
   }
 
@@ -224,11 +227,6 @@ export class Orchestrator {
 
   private async executeTask(taskId: string): Promise<AgentResult | null> {
     this.log(t().taskStarting(taskId));
-    
-    this.addStep({
-      action: 'execute',
-      taskId,
-    });
 
     // Task tanımını bul
     const task = this.taskMap.get(taskId);
@@ -244,6 +242,50 @@ export class Orchestrator {
       };
     }
 
+    // ── Adaptive Task Splitting ──
+    const handoffContext = this.contextAccumulator.getMarkdown();
+    const splitResult = this.taskSplitter.split(task, handoffContext || undefined);
+
+    if (splitResult.wasSplit) {
+      this.log(`  ✂️ Task split into ${splitResult.subTasks.length} sub-tasks (${splitResult.reason})`);
+
+      // Execute sub-tasks sequentially
+      const combinedArtifacts: string[] = [];
+      let lastResult: AgentResult | null = null;
+
+      for (const subTask of splitResult.subTasks) {
+        this.taskMap.set(subTask.id, subTask);
+        this.log(`  ── Sub-task: ${subTask.id} ──`);
+
+        const subResult = await this.executeSingleTask(subTask);
+        if (subResult) {
+          lastResult = subResult;
+          combinedArtifacts.push(...subResult.artifacts);
+
+          // Evaluate sub-task
+          await this.evaluateAndProcess(subResult);
+        }
+      }
+
+      // Return combined result
+      return lastResult ? {
+        ...lastResult,
+        taskId,
+        artifacts: combinedArtifacts,
+      } : null;
+    }
+
+    // No split needed — execute with handoff context injected
+    const taskToRun = splitResult.original ?? task;
+    return this.executeSingleTask(taskToRun);
+  }
+
+  private async executeSingleTask(task: TaskDefinition): Promise<AgentResult | null> {
+    this.addStep({
+      action: 'execute',
+      taskId: task.id,
+    });
+
     const memory = await this.memory.optimizedSnapshot();
 
     // Inject accumulated context into state for agent visibility
@@ -256,7 +298,7 @@ export class Orchestrator {
 
     const result = await this.agentRunner.runTask(task, memory);
 
-    this.log(t().taskResult(taskId, result.success, result.duration));
+    this.log(t().taskResult(task.id, result.success, result.duration));
 
     return result;
   }

@@ -20,5 +20,7 @@ export type { SpecialistDomain, SpecialistProfile, RoutingDecision, FocusedConte
 export { VerifiedCodePipeline } from './verified-code-pipeline.js';
 export type { CodePipelineResult, PipelineCheck } from './verified-code-pipeline.js';
 export { ContextAccumulator } from './context-accumulator.js';
+export { TaskSplitter } from './task-splitter.js';
+export type { SplitResult } from './task-splitter.js';
 export { ShipCheck } from './ship-check.js';
 export type { ShipCheckResult, ShipVerdict } from './ship-check.js';
