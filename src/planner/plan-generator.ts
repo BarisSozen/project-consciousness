@@ -49,9 +49,32 @@ export class PlanGenerator {
     const featurePhases: Array<Omit<ProjectPhase, 'id' | 'dependsOn'>> = [];
 
     for (const detector of FEATURE_DETECTORS) {
+      // Skip frontend for api-only projects
+      if (detector.name === 'frontend') {
+        const isApiOnly = briefText.includes('api-only') || briefText.includes('api only') ||
+          briefText.includes('sadece api') || briefText.includes('backend') ||
+          briefText.includes('frontend yok');
+        if (isApiOnly) continue;
+      }
+
       if (detector.keywords.some(kw => briefText.includes(kw))) {
         detectedFeatures.push(detector.name);
         featurePhases.push(structuredClone(detector.phase));
+      }
+    }
+
+    // Reorder: DB before Auth (auth needs user table)
+    const dbIdx = featurePhases.findIndex(p => p.name.includes('Database'));
+    const authIdx = featurePhases.findIndex(p => p.name.includes('Auth'));
+    if (dbIdx > authIdx && authIdx >= 0 && dbIdx >= 0) {
+      const [dbPhase] = featurePhases.splice(dbIdx, 1);
+      featurePhases.splice(authIdx, 0, dbPhase!);
+      // Also reorder detected features
+      const dbFeatIdx = detectedFeatures.indexOf('database');
+      const authFeatIdx = detectedFeatures.indexOf('auth');
+      if (dbFeatIdx > authFeatIdx && authFeatIdx >= 0) {
+        detectedFeatures.splice(dbFeatIdx, 1);
+        detectedFeatures.splice(authFeatIdx, 0, 'database');
       }
     }
 

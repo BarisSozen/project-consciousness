@@ -63,6 +63,18 @@ export class TaskSplitter {
    * @returns SplitResult with either original or sub-tasks
    */
   split(task: TaskDefinition, handoffContext?: string): SplitResult {
+    // Never split document, config, or test-only tasks
+    if (task.type === 'document' || task.type === 'review') {
+      return { original: this.injectHandoff(task, handoffContext ?? ''), subTasks: [], wasSplit: false, reason: 'Document/review tasks are not split' };
+    }
+
+    // Never split tasks with explicit single-file targets
+    const desc = `${task.title} ${task.description}`.toLowerCase();
+    const singleFileSignals = ['readme', '.env', 'config', 'dockerfile', 'docker-compose', 'changelog', 'license'];
+    if (singleFileSignals.some(s => desc.includes(s))) {
+      return { original: this.injectHandoff(task, handoffContext ?? ''), subTasks: [], wasSplit: false, reason: 'Single-file task, no split needed' };
+    }
+
     const estimatedFiles = this.estimateFileCount(task);
 
     if (estimatedFiles <= MAX_FILES_PER_TASK) {
@@ -94,11 +106,11 @@ export class TaskSplitter {
   // ═══════════════════════════════════════════════════════════
 
   private estimateFileCount(task: TaskDefinition): number {
-    const desc = `${task.title} ${task.description}`.toLowerCase();
+    const desc = `${task.title}`.toLowerCase(); // Use TITLE only, not full description (which includes brief text)
 
     let count = 1; // at least 1 file
 
-    // Entity-based estimation
+    // Entity-based estimation — only from task title, not injected brief
     const entities = this.extractEntities(desc);
     if (entities.length > 0) {
       // Each entity typically produces: model + service + route = 3 files

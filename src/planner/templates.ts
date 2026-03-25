@@ -69,7 +69,8 @@ export const FEATURE_DETECTORS: FeatureDetector[] = [
   },
   {
     name: 'frontend',
-    keywords: ['frontend', 'ui', 'react', 'vue', 'svelte', 'next', 'nuxt', 'component', 'page', 'dashboard', 'landing', 'arayüz'],
+    keywords: ['frontend', 'react', 'vue', 'svelte', 'next', 'nuxt', 'component', 'dashboard', 'landing', 'arayüz'],
+    // NOTE: 'ui' removed — matches 'build' (b-ui-ld). Use word-boundary check instead.
     phase: {
       name: 'Frontend & UI',
       description: 'Kullanıcı arayüzü, component\'ler, routing ve state management',
