@@ -104,6 +104,33 @@ async function cmdNew(brief: string, config: OrchestratorConfig): Promise<void> 
     console.log('  📄 MISSION.md / ARCHITECTURE.md / DECISIONS.md / STATE.md\n');
   }
 
+  // ── Phase 1.5: Brief Validation — understand before building ──
+  {
+    const { BriefValidator } = await import('../brief/brief-validator.js');
+    const validator = new BriefValidator(70);
+    const validation = await validator.validate(resolvedBrief);
+
+    if (validation.enrichedBrief !== resolvedBrief) {
+      resolvedBrief = validation.enrichedBrief;
+      console.log(`  ✅ Brief enriched with ${validation.enrichedBrief.length - resolvedBrief.length > 0 ? 'additional' : 'clarified'} details`);
+
+      // Update MISSION.md with enriched brief
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(join(PROJECT_ROOT, 'MISSION.md'), resolvedBrief, 'utf-8');
+    }
+
+    if (!validation.isComplete && validation.gaps.length > 0) {
+      console.log(`\n  ⚠️  Confidence: ${validation.confidence}% — some gaps remain:`);
+      for (const gap of validation.gaps.slice(0, 3)) {
+        const icon = gap.importance === 'critical' ? '🔴' : '🟡';
+        console.log(`     ${icon} [${gap.category}] ${gap.question}`);
+      }
+      console.log('  \x1b[2mProceeding with available information...\x1b[0m\n');
+    } else {
+      console.log(`  ✅ Brief validated — confidence: ${validation.confidence}%\n`);
+    }
+  }
+
   // ── Phase 2: Plan Generation (LLM gerektirmez) ───────────
   if (collectedBrief) {
     const { PlanGenerator, AimCollector, computeCoverage, printCoverage, renderCoverageMd } =
