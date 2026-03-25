@@ -23,3 +23,8 @@ export type { GuardReport, GuardFinding } from './llm-output-guard.js';
 export { AutoFixEngine } from './auto-fix.js';
 export { CVEScanner } from './cve-scanner.js';
 export { PerformanceBudget } from './performance-budget.js';
+export { TypeFlowAnalyzer } from './type-flow-analyzer.js';
+export { ComplexityAnalyzer } from './complexity-analyzer.js';
+export { CoverageAnalyzer } from './coverage-analyzer.js';
+export { ConventionDetector } from './convention-detector.js';
+export { ASTCodeMod } from './ast-code-mod.js';

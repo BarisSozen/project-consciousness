@@ -9,6 +9,7 @@
  *   /new [brief]    → Start a new project (SmartBrief → Orchestrator)
  *   /audit          → Reverse-engineer & audit current codebase
  *   /trace          → Run Tracer Agent (static + semantic + runtime + audit)
+ *   /deep-audit     → Type-flow + complexity + coverage analysis
  *   /status         → Show STATE.md
  *   /log            → Show DECISIONS.md
  *   /health         → Quick health check (LLM + agent CLI)
@@ -296,6 +297,127 @@ async function cmdReview(args: string, config: OrchestratorConfig): Promise<void
   console.log(`  ⏱️ ${result.duration}ms\n`);
 }
 
+async function cmdConventions(): Promise<void> {
+  console.log('  🔍 Detecting project conventions...\n');
+
+  const { ConventionDetector } = await import('../agent/tracer/convention-detector.js');
+  const detector = new ConventionDetector(PROJECT_ROOT);
+  const report = await detector.detect();
+  const c = report.conventions;
+
+  console.log('  ═══════════════════════════════════════════');
+  console.log('  📐 PROJECT CONVENTIONS');
+  console.log('  ═══════════════════════════════════════════\n');
+
+  console.log(`  📁 File naming:     ${c.fileNaming}`);
+  console.log(`  📝 Variables:       ${c.variableNaming}`);
+  console.log(`  🏷️  Types:           ${c.typeNaming}`);
+  console.log(`  📦 Imports:         ${c.importStyle}${c.usesBarrelExports ? ' + barrel exports' : ''}`);
+  console.log(`  📤 Exports:         ${c.exportStyle}`);
+  console.log(`  ⚠️  Error handling:  ${c.errorHandling}`);
+  console.log(`  ✅ Validation:      ${c.validationLib ?? 'none detected'}`);
+  console.log(`  ⚡ Async:           ${c.asyncPattern}`);
+  console.log(`  🔧 Style:           ${c.indentation.size}-${c.indentation.style}, ${c.semicolons ? '' : 'no '}semicolons, ${c.quotes} quotes`);
+  console.log(`  🧪 Tests:           ${c.testFramework}, ${c.testPattern}`);
+  if (c.layers.length > 0) {
+    console.log(`  🏗️  Layers:          ${c.layers.join(', ')}`);
+  }
+  console.log(`  📊 Confidence:      ${Math.round(c.confidence * 100)}%`);
+
+  if (report.violations.length > 0) {
+    console.log(`\n  ⚠️  Convention Violations: ${report.violations.length} (${report.summary.autoFixable} auto-fixable)`);
+    for (const v of report.violations.slice(0, 5)) {
+      console.log(`     [${v.rule}] ${v.file}:${v.line} — expected ${v.expected}, got ${v.actual}`);
+    }
+    if (report.violations.length > 5) {
+      console.log(`     ... and ${report.violations.length - 5} more`);
+    }
+  }
+
+  console.log('\n  ── Agent Prompt Snippet ──────────────────');
+  console.log(report.promptSnippet.split('\n').map(l => `  ${l}`).join('\n'));
+  console.log('  ═══════════════════════════════════════════\n');
+}
+
+async function cmdDeepAudit(): Promise<void> {
+  console.log('  🔬 Running deep audit (type-flow + complexity + coverage)...\n');
+
+  const { TypeFlowAnalyzer } = await import('../agent/tracer/type-flow-analyzer.js');
+  const { ComplexityAnalyzer } = await import('../agent/tracer/complexity-analyzer.js');
+  const { CoverageAnalyzer } = await import('../agent/tracer/coverage-analyzer.js');
+
+  const start = Date.now();
+
+  // Run all 3 in parallel
+  const [typeFlow, complexity, coverage] = await Promise.all([
+    new TypeFlowAnalyzer(PROJECT_ROOT).analyze(),
+    new ComplexityAnalyzer(PROJECT_ROOT).analyze(),
+    new CoverageAnalyzer(PROJECT_ROOT).analyze(),
+  ]);
+
+  // ── Type Flow ──
+  console.log('  ═══════════════════════════════════════════');
+  console.log('  🔀 TYPE FLOW ANALYSIS');
+  console.log('  ═══════════════════════════════════════════\n');
+  console.log(`  Types found: ${typeFlow.summary.totalTypes}`);
+  console.log(`  Avg usage/type: ${typeFlow.summary.avgUsagePerType}`);
+  console.log(`  Max blast radius: ${typeFlow.summary.maxBlastRadius}`);
+  console.log(`  Risk score: ${typeFlow.riskScore}/100\n`);
+
+  if (typeFlow.hotTypes.length > 0) {
+    console.log('  🔥 Hot Types (highest blast radius):');
+    for (const t of typeFlow.hotTypes.slice(0, 5)) {
+      console.log(`     ${t.name} — used in ${t.usageCount} files (${t.file})`);
+    }
+  }
+
+  // ── Complexity ──
+  console.log('\n  ═══════════════════════════════════════════');
+  console.log('  🧠 COMPLEXITY ANALYSIS');
+  console.log('  ═══════════════════════════════════════════\n');
+  console.log(`  Functions analyzed: ${complexity.totalFunctions}`);
+  console.log(`  Avg cyclomatic: ${complexity.averageComplexity.cyclomatic}`);
+  console.log(`  Avg cognitive: ${complexity.averageComplexity.cognitive}`);
+  console.log(`  ✅ OK: ${complexity.summary.ok}  ⚠️ Warning: ${complexity.summary.warning}  🚨 Critical: ${complexity.summary.critical}\n`);
+
+  if (complexity.hotspots.length > 0) {
+    console.log('  🔥 Complexity Hotspots:');
+    for (const h of complexity.hotspots.slice(0, 5)) {
+      const icon = h.rating === 'critical' ? '🚨' : h.rating === 'warning' ? '⚠️' : '✅';
+      console.log(`     ${icon} ${h.name} — cc:${h.cyclomatic} cog:${h.cognitive} (${h.file}:${h.line})`);
+    }
+  }
+
+  // ── Coverage ──
+  console.log('\n  ═══════════════════════════════════════════');
+  console.log('  📊 COVERAGE INTELLIGENCE');
+  console.log('  ═══════════════════════════════════════════\n');
+  console.log(`  Data source: ${coverage.hasRealData ? 'Istanbul/v8 (real)' : 'Heuristic (estimated)'}`);
+  console.log(`  Files: ${coverage.summary.coveredFiles}/${coverage.summary.totalFiles} have tests`);
+  console.log(`  Line coverage: ${coverage.overall.lines}%`);
+  console.log(`  Function coverage: ${coverage.overall.functions}%\n`);
+
+  if (coverage.riskZones.length > 0) {
+    console.log('  💣 Risk Zones (high complexity + low coverage):');
+    for (const r of coverage.riskZones.slice(0, 5)) {
+      console.log(`     🚨 ${r.functionName} — risk:${r.riskScore} (${r.reason}) [${r.file}:${r.line}]`);
+    }
+  }
+
+  // ── Combined ──
+  const overallRisk = Math.round(
+    (typeFlow.riskScore * 0.3 +
+     (complexity.summary.critical > 0 ? 80 : complexity.summary.warning > 3 ? 50 : 20) * 0.3 +
+     (100 - coverage.overall.lines) * 0.4)
+  );
+
+  const duration = Date.now() - start;
+  console.log('\n  ═══════════════════════════════════════════');
+  console.log(`  🎯 OVERALL RISK: ${overallRisk}/100`);
+  console.log(`  ⏱️ ${duration}ms`);
+  console.log('  ═══════════════════════════════════════════\n');
+}
+
 async function cmdStatus(): Promise<void> {
   try {
     const content = await readFile(join(PROJECT_ROOT, 'STATE.md'), 'utf-8');
@@ -360,6 +482,9 @@ function printInteractiveMenu(): void {
   │    /review          Review git changes   │
   │    /review --all    All uncommitted      │
   │    /trace           Deep 4-layer trace   │
+  │    /deep-audit      Type + complexity +  │
+  │                     coverage analysis    │
+  │    /conventions     Detect conventions   │
   │                                          │
   │  📊 Status                               │
   │    /status          Show STATE.md        │
@@ -382,6 +507,8 @@ function printHelp(): void {
     /review         Review staged git changes (security + architecture)
     /review --all   Review all uncommitted changes
     /trace          Full 4-layer trace (static + semantic + runtime + audit)
+    /deep-audit     Type-flow + complexity + coverage intelligence
+    /conventions    Detect project conventions (naming, imports, patterns)
     /status         Show STATE.md
     /log            Show DECISIONS.md
     /health         Check LLM, agent CLI, and memory files
@@ -430,6 +557,8 @@ const COMMANDS: CommandEntry[] = [
   { cmd: '/review',      label: '🔍 /review',         description: 'Review staged git changes',           group: 'Analyze' },
   { cmd: '/review --all',label: '🔍 /review --all',   description: 'Review all uncommitted changes',      group: 'Analyze' },
   { cmd: '/trace',       label: '🔍 /trace',          description: 'Deep 4-layer trace',                  group: 'Analyze' },
+  { cmd: '/deep-audit',  label: '🔬 /deep-audit',     description: 'Type + complexity + coverage',         group: 'Analyze' },
+  { cmd: '/conventions', label: '📐 /conventions',    description: 'Detect project conventions',           group: 'Analyze' },
   { cmd: '/status',      label: '📊 /status',         description: 'Show STATE.md',                       group: 'Status' },
   { cmd: '/log',         label: '📊 /log',            description: 'Show DECISIONS.md',                   group: 'Status' },
   { cmd: '/health',      label: '📊 /health',         description: 'Check LLM + tools',                   group: 'Status' },
@@ -555,6 +684,10 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdReview(input.slice(7).trim(), config);
       } else if (input === '/trace') {
         await cmdTrace(config);
+      } else if (input === '/deep-audit') {
+        await cmdDeepAudit();
+      } else if (input === '/conventions') {
+        await cmdConventions();
       } else if (input === '/status') {
         await cmdStatus();
       } else if (input === '/log') {
@@ -601,6 +734,12 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
       break;
     case 'trace':
       await cmdTrace(config);
+      break;
+    case 'deep-audit':
+      await cmdDeepAudit();
+      break;
+    case 'conventions':
+      await cmdConventions();
       break;
     case 'status':
       await cmdStatus();

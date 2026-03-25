@@ -569,3 +569,201 @@ export interface PhaseTask {
   type: 'create' | 'modify' | 'config' | 'test' | 'document';
   targetFiles: string[];
 }
+
+// ============================================================
+// Deep Audit Types — P0 Analyzers
+// ============================================================
+
+/** Type-Flow Analyzer: tracks type/interface usage chains and blast radius */
+export interface TypeFlowNode {
+  name: string;
+  file: string;
+  line: number;
+  kind: 'interface' | 'type' | 'enum' | 'class';
+  /** Number of files that reference this type */
+  usageCount: number;
+  /** Files that directly import/reference this type */
+  usedBy: string[];
+}
+
+export interface ImpactChain {
+  /** The root type that was changed */
+  source: TypeFlowNode;
+  /** All types/files that would break if source changes */
+  affected: Array<{ file: string; symbol: string; depth: number }>;
+  /** Total number of files in the blast radius */
+  blastRadius: number;
+}
+
+export interface TypeFlowReport {
+  /** All type/interface declarations found */
+  typeNodes: TypeFlowNode[];
+  /** Impact chains — "if X changes, these break" */
+  impactChains: ImpactChain[];
+  /** Types with highest usage count (blast radius) — top 10 */
+  hotTypes: TypeFlowNode[];
+  /** 0-100: higher = more type coupling risk */
+  riskScore: number;
+  summary: {
+    totalTypes: number;
+    totalUsages: number;
+    avgUsagePerType: number;
+    maxBlastRadius: number;
+  };
+}
+
+/** Complexity Analyzer: cyclomatic + cognitive complexity per function */
+export interface FunctionComplexity {
+  name: string;
+  file: string;
+  line: number;
+  cyclomatic: number;
+  cognitive: number;
+  linesOfCode: number;
+  rating: 'ok' | 'warning' | 'critical';
+}
+
+export interface FileComplexity {
+  file: string;
+  functions: FunctionComplexity[];
+  avgCyclomatic: number;
+  avgCognitive: number;
+  maxCyclomatic: number;
+  maxCognitive: number;
+  totalFunctions: number;
+}
+
+export interface ComplexityReport {
+  functions: FunctionComplexity[];
+  files: FileComplexity[];
+  /** Top 10 most complex functions */
+  hotspots: FunctionComplexity[];
+  averageComplexity: { cyclomatic: number; cognitive: number };
+  totalFunctions: number;
+  summary: { ok: number; warning: number; critical: number };
+}
+
+/** Coverage Analyzer: test coverage intelligence + risk zones */
+export interface FileCoverage {
+  file: string;
+  lines: { total: number; covered: number; percent: number };
+  branches: { total: number; covered: number; percent: number };
+  functions: { total: number; covered: number; percent: number };
+}
+
+export interface RiskZone {
+  file: string;
+  functionName: string;
+  line: number;
+  complexity: number;
+  coveragePercent: number;
+  /** Higher = more dangerous (high complexity + low coverage) */
+  riskScore: number;
+  reason: string;
+}
+
+export interface CoverageIntelReport {
+  files: FileCoverage[];
+  riskZones: RiskZone[];
+  overall: { lines: number; branches: number; functions: number; statements: number };
+  /** Whether data came from real Istanbul/v8 JSON or heuristic */
+  hasRealData: boolean;
+  summary: {
+    totalFiles: number;
+    coveredFiles: number;
+    riskZoneCount: number;
+    avgLineCoverage: number;
+  };
+}
+
+/** Combined deep audit report */
+export interface DeepAuditReport {
+  typeFlow: TypeFlowReport;
+  complexity: ComplexityReport;
+  coverage: CoverageIntelReport;
+  /** Combined risk score (0-100) — weighted average */
+  overallRisk: number;
+  timestamp: string;
+}
+
+// ============================================================
+// Convention Detector Types
+// ============================================================
+
+export type NamingConvention = 'camelCase' | 'PascalCase' | 'snake_case' | 'kebab-case' | 'mixed';
+export type ImportStyle = 'named' | 'default' | 'barrel' | 'mixed';
+export type ErrorStrategy = 'throw' | 'result-pattern' | 'callback' | 'mixed';
+export type AsyncPattern = 'async-await' | 'promise-then' | 'callback' | 'mixed';
+export type ExportStyle = 'named' | 'default' | 'mixed';
+export type TestFramework = 'vitest' | 'jest' | 'mocha' | 'unknown';
+
+export interface ProjectConventions {
+  /** File naming style */
+  fileNaming: NamingConvention;
+  /** Variable/function naming */
+  variableNaming: NamingConvention;
+  /** Class/interface naming */
+  typeNaming: NamingConvention;
+  /** Import style preference */
+  importStyle: ImportStyle;
+  /** Whether barrel exports (index.ts re-exports) are used */
+  usesBarrelExports: boolean;
+  /** Error handling strategy */
+  errorHandling: ErrorStrategy;
+  /** Validation library used */
+  validationLib: string | null;
+  /** Async pattern preference */
+  asyncPattern: AsyncPattern;
+  /** Export style preference */
+  exportStyle: ExportStyle;
+  /** Indentation */
+  indentation: { style: 'spaces' | 'tabs'; size: number };
+  /** Semicolons */
+  semicolons: boolean;
+  /** Single vs double quotes */
+  quotes: 'single' | 'double';
+  /** Test framework */
+  testFramework: TestFramework;
+  /** Test pattern (describe/it vs test) */
+  testPattern: 'describe-it' | 'test-fn' | 'mixed';
+  /** Detected architectural layers present */
+  layers: string[];
+  /** Confidence of detection (0-1) */
+  confidence: number;
+}
+
+export interface ConventionViolation {
+  rule: string;
+  file: string;
+  line: number;
+  expected: string;
+  actual: string;
+  autoFixable: boolean;
+}
+
+export interface ConventionReport {
+  conventions: ProjectConventions;
+  violations: ConventionViolation[];
+  /** Markdown prompt snippet for injecting into agent context */
+  promptSnippet: string;
+  summary: { totalFiles: number; violationCount: number; autoFixable: number };
+}
+
+// ============================================================
+// AST Code Mod Types
+// ============================================================
+
+export type CodeModOperation =
+  | { type: 'add-field'; target: string; fieldName: string; fieldType: string }
+  | { type: 'add-import'; file: string; from: string; symbols: string[] }
+  | { type: 'rename-symbol'; oldName: string; newName: string; scope?: string }
+  | { type: 'wrap-try-catch'; functionName: string; file: string }
+  | { type: 'convert-export'; file: string; from: 'default' | 'named'; to: 'default' | 'named' };
+
+export interface CodeModResult {
+  operation: CodeModOperation;
+  file: string;
+  success: boolean;
+  diff?: string;
+  error?: string;
+}
