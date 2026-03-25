@@ -19,3 +19,6 @@ export { SpecialistRouter } from './specialist-router.js';
 export type { SpecialistDomain, SpecialistProfile, RoutingDecision, FocusedContext } from './specialist-router.js';
 export { VerifiedCodePipeline } from './verified-code-pipeline.js';
 export type { CodePipelineResult, PipelineCheck } from './verified-code-pipeline.js';
+export { ContextAccumulator } from './context-accumulator.js';
+export { ShipCheck } from './ship-check.js';
+export type { ShipCheckResult, ShipVerdict } from './ship-check.js';

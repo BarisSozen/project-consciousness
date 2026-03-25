@@ -297,6 +297,25 @@ async function cmdReview(args: string, config: OrchestratorConfig): Promise<void
   console.log(`  ⏱️ ${result.duration}ms\n`);
 }
 
+async function cmdShipCheck(): Promise<void> {
+  console.log('  🚀 Running ship readiness check...\n');
+
+  const { ShipCheck } = await import('../orchestrator/ship-check.js');
+  const checker = new ShipCheck(PROJECT_ROOT, (msg) => console.log(msg));
+  const result = await checker.run();
+
+  console.log('\n  ═══════════════════════════════════════════');
+  console.log(`  📦 VERDICT: ${result.verdict}`);
+  console.log('  ═══════════════════════════════════════════\n');
+
+  for (const c of result.checks) {
+    const icon = c.passed ? '✅' : c.severity === 'blocker' ? '🚨' : '⚠️';
+    console.log(`  ${icon} ${c.name}: ${c.detail}`);
+  }
+
+  console.log(`\n  ⏱️ ${result.duration}ms\n`);
+}
+
 async function cmdConventions(): Promise<void> {
   console.log('  🔍 Detecting project conventions...\n');
 
@@ -559,6 +578,7 @@ const COMMANDS: CommandEntry[] = [
   { cmd: '/trace',       label: '🔍 /trace',          description: 'Deep 4-layer trace',                  group: 'Analyze' },
   { cmd: '/deep-audit',  label: '🔬 /deep-audit',     description: 'Type + complexity + coverage',         group: 'Analyze' },
   { cmd: '/conventions', label: '📐 /conventions',    description: 'Detect project conventions',           group: 'Analyze' },
+  { cmd: '/ship-check', label: '🚀 /ship-check',    description: 'Production readiness check',           group: 'Analyze' },
   { cmd: '/status',      label: '📊 /status',         description: 'Show STATE.md',                       group: 'Status' },
   { cmd: '/log',         label: '📊 /log',            description: 'Show DECISIONS.md',                   group: 'Status' },
   { cmd: '/health',      label: '📊 /health',         description: 'Check LLM + tools',                   group: 'Status' },
@@ -688,6 +708,8 @@ async function repl(config: OrchestratorConfig): Promise<void> {
         await cmdDeepAudit();
       } else if (input === '/conventions') {
         await cmdConventions();
+      } else if (input === '/ship-check') {
+        await cmdShipCheck();
       } else if (input === '/status') {
         await cmdStatus();
       } else if (input === '/log') {
@@ -740,6 +762,9 @@ async function nonInteractive(command: string, args: string, config: Orchestrato
       break;
     case 'conventions':
       await cmdConventions();
+      break;
+    case 'ship-check':
+      await cmdShipCheck();
       break;
     case 'status':
       await cmdStatus();

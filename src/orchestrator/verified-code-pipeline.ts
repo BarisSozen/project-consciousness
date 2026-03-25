@@ -17,6 +17,7 @@ import { ConventionDetector } from '../agent/tracer/convention-detector.js';
 import { TypeFlowAnalyzer } from '../agent/tracer/type-flow-analyzer.js';
 import { ComplexityAnalyzer } from '../agent/tracer/complexity-analyzer.js';
 import { SecurityScanner } from '../agent/tracer/security-scanner.js';
+import { ASTCodeMod } from '../agent/tracer/ast-code-mod.js';
 import type { ConventionViolation } from '../types/index.js';
 
 // ═══════════════════════════════════════════════════════════
@@ -56,6 +57,57 @@ export class VerifiedCodePipeline {
   constructor(projectRoot: string, log?: LogFn) {
     this.root = projectRoot;
     this.log = log ?? (() => {});
+  }
+
+  /**
+   * Run verification with auto-fix: verify → try AST fix → re-verify.
+   * Use this in the orchestrator loop instead of bare verify().
+   */
+  async verifyWithAutoFix(): Promise<CodePipelineResult> {
+    const firstPass = await this.verify();
+    if (firstPass.passed || firstPass.autoFixable === 0) return firstPass;
+
+    // Try auto-fix for common issues
+    this.log('  🔧 Attempting auto-fix...');
+    const mod = new ASTCodeMod(this.root);
+    let fixCount = 0;
+
+    // Auto-fix: missing imports detected by tsc (TS2305: has no exported member)
+    for (const check of firstPass.checks) {
+      if (check.name === 'TypeScript' && !check.passed) {
+        for (const err of check.errors) {
+          // TS2305: Module '"./x"' has no exported member 'Y' — try rename
+          const renameMatch = err.match(/has no exported member '(\w+)'/);
+          if (renameMatch?.[1]) {
+            this.log(`    → Flagged for retry: missing export '${renameMatch[1]}'`);
+          }
+
+          // TS2345: Argument of type 'X' is not assignable — can't auto-fix
+          // TS2304: Cannot find name 'X' — can't auto-fix without knowing source
+        }
+      }
+
+      // Auto-fix: wrap unwrapped functions flagged by complexity check
+      if (check.name === 'Complexity' && !check.passed) {
+        for (const err of check.errors) {
+          const fnMatch = err.match(/🚨 (\w+) \(([^:]+):(\d+)\)/);
+          if (fnMatch?.[1] && fnMatch[2]) {
+            const wrapResult = mod.wrapWithTryCatch(fnMatch[2], fnMatch[1]);
+            if (wrapResult.success) {
+              fixCount++;
+              this.log(`    ✅ Wrapped ${fnMatch[1]} with error handling`);
+            }
+          }
+        }
+      }
+    }
+
+    if (fixCount > 0) {
+      this.log(`  ✅ Auto-fixed ${fixCount} issues, re-verifying...`);
+      return this.verify();
+    }
+
+    return firstPass;
   }
 
   /**

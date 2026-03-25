@@ -11,6 +11,8 @@ import { Planner } from './planner.js';
 import { Evaluator } from './evaluator.js';
 import { Escalator } from './escalator.js';
 import { AuditGate } from './audit-gate.js';
+import { ContextAccumulator } from './context-accumulator.js';
+import { ShipCheck } from './ship-check.js';
 import { resolveProvider } from '../llm/resolve.js';
 import { t, setLocale } from '../i18n/index.js';
 import type { 
@@ -33,6 +35,7 @@ export class Orchestrator {
   private evaluator: Evaluator;
   private escalator: Escalator;
   private auditGate: AuditGate;
+  private contextAccumulator: ContextAccumulator;
   private config: OrchestratorConfig;
   private steps: OrchestrationStep[] = [];
   private sessionId: string;
@@ -63,6 +66,7 @@ export class Orchestrator {
       resolveProvider(config),
       (msg) => this.log(msg)
     );
+    this.contextAccumulator = new ContextAccumulator(config.projectRoot);
     this.sessionId = `session-${Date.now()}`;
   }
 
@@ -145,7 +149,26 @@ export class Orchestrator {
       this.log(`  💯 Health: ${reAudit.report.summary.healthScore}/100 ${reAudit.passed ? '✅' : '⚠️ still below threshold'}`);
     }
 
-    // 8. Session summary
+    // 8. Ship readiness check
+    this.log('\n🚀 Running ship readiness check...');
+    const shipCheck = new ShipCheck(this.config.projectRoot, (msg) => this.log(msg));
+    const shipResult = await shipCheck.run();
+    this.log(`\n📦 Ship verdict: ${shipResult.verdict} (${shipResult.blockers} blockers, ${shipResult.warnings} warnings)\n`);
+
+    // Log ship check as decision
+    const shipDecisionId = await this.memory.getNextDecisionId();
+    await this.memory.appendDecision({
+      id: shipDecisionId,
+      title: `Ship check: ${shipResult.verdict}`,
+      date: new Date().toISOString(),
+      context: 'Automated ship readiness verification',
+      decision: shipResult.summary.slice(0, 500),
+      rationale: `${shipResult.checks.filter(c => c.passed).length}/${shipResult.checks.length} checks passed`,
+      alternatives: 'Manual integration testing',
+      status: 'active',
+    });
+
+    // 9. Session summary
     return {
       sessionId: this.sessionId,
       startedAt: new Date().toISOString(),
@@ -222,6 +245,13 @@ export class Orchestrator {
     }
 
     const memory = await this.memory.optimizedSnapshot();
+
+    // Inject accumulated context into state for agent visibility
+    const ctxMarkdown = this.contextAccumulator.getMarkdown();
+    if (ctxMarkdown) {
+      memory.files.state += '\n\n' + ctxMarkdown;
+    }
+
     this.log(`  ${t().memorySnapshotTaken} (hash: ${memory.hash})`);
 
     const result = await this.agentRunner.runTask(task, memory);
@@ -279,13 +309,21 @@ export class Orchestrator {
   private async markTaskComplete(result: AgentResult): Promise<void> {
     const state = await this.memory.parseState();
     const taskIdx = state.activeTasks.findIndex(t => t.taskId === result.taskId);
-    
+
     if (taskIdx >= 0) {
       const task = state.activeTasks.splice(taskIdx, 1)[0]!;
       task.status = 'done';
       task.output = result.output;
       task.completedAt = new Date().toISOString();
       state.completedTasks.push(task);
+    }
+
+    // Accumulate context from produced artifacts
+    if (result.artifacts.length > 0) {
+      const ctx = this.contextAccumulator.accumulate(result.artifacts);
+      if (ctx.markdown) {
+        this.log(`  📋 Context accumulated: ${ctx.files.length} files tracked`);
+      }
     }
 
     state.lastUpdated = new Date().toISOString();
