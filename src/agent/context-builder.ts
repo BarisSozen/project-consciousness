@@ -7,13 +7,14 @@
  * Tasarım İlkesi #1: Memory-First — her karar hafızada iz bırakır.
  */
 
-import type { 
-  TaskDefinition, 
+import type {
+  TaskDefinition,
   MemorySnapshot,
   AgentConfig,
   CodebaseContext,
 } from '../types/index.js';
 import { CodebaseReader } from './codebase-reader.js';
+import { ConventionDetector } from './tracer/convention-detector.js';
 import { t } from '../i18n/index.js';
 
 /** Agent type → i18n persona key */
@@ -30,14 +31,32 @@ function getPersona(agentType: string): string {
 
 export class ContextBuilder {
   private codebaseReader: CodebaseReader;
+  /** Cached convention snippet — detected once per session */
+  private conventionSnippet: string | null = null;
 
   constructor() {
     this.codebaseReader = new CodebaseReader();
   }
 
   /**
+   * Detect project conventions and cache the prompt snippet.
+   * Call once before building prompts.
+   */
+  async detectConventions(projectRoot: string): Promise<string> {
+    if (this.conventionSnippet) return this.conventionSnippet;
+    try {
+      const detector = new ConventionDetector(projectRoot);
+      const report = await detector.detect();
+      this.conventionSnippet = report.promptSnippet;
+    } catch {
+      this.conventionSnippet = '';
+    }
+    return this.conventionSnippet;
+  }
+
+  /**
    * Agent için tam prompt oluştur.
-   * Yapı: Persona + Memory Context + Codebase Context + Task Detail + Output Format
+   * Yapı: Persona + Conventions + Memory Context + Codebase Context + Task Detail + Output Format
    */
   buildPrompt(
     task: TaskDefinition,
@@ -63,8 +82,19 @@ ${codebaseContext.truncated ? '\n⚠️ Some files truncated due to token limit.
 `;
     }
 
-    return `${persona}
+    let conventionSection = '';
+    if (this.conventionSnippet) {
+      conventionSection = `
+═══════════════════════════════════════════════════
+PROJECT CONVENTIONS (follow these strictly)
+═══════════════════════════════════════════════════
 
+${this.conventionSnippet}
+`;
+    }
+
+    return `${persona}
+${conventionSection}
 ═══════════════════════════════════════════════════
 ${locale.memoryContextTitle}
 ═══════════════════════════════════════════════════

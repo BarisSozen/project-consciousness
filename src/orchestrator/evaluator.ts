@@ -87,6 +87,12 @@ export class Evaluator {
     // 3. Anti-scope check
     const antiScopeViolations = this.checkAntiScope(agentResult, memory);
 
+    // 3b. Mandatory test check — code tasks must produce test files
+    const testIssue = this.checkMandatoryTests(agentResult);
+    if (testIssue) {
+      antiScopeViolations.push(testIssue);
+    }
+
     // 4. Compute scores
     const scores = this.computeScores(checks, antiScopeViolations, agentResult);
 
@@ -317,6 +323,33 @@ export class Evaluator {
     }
 
     return violations;
+  }
+
+  // ── Mandatory Test Check ───────────────────────────────
+
+  private checkMandatoryTests(agentResult: AgentResult): AntiScopeViolation | null {
+    // Only enforce for code tasks that produce source files
+    const sourceFiles = agentResult.artifacts.filter(a =>
+      a.match(/\.(ts|tsx|js|jsx)$/) &&
+      !a.match(/\.(test|spec)\.(ts|tsx|js|jsx)$/) &&
+      !a.includes('node_modules') &&
+      !a.includes('.d.ts')
+    );
+
+    if (sourceFiles.length === 0) return null; // no source files = not a code task
+
+    const testFiles = agentResult.artifacts.filter(a =>
+      a.match(/\.(test|spec)\.(ts|tsx|js|jsx)$/)
+    );
+
+    if (testFiles.length === 0) {
+      return {
+        type: 'breaking-change',
+        detail: `Code task produced ${sourceFiles.length} source file(s) but no test files. Every code task must include tests.`,
+      };
+    }
+
+    return null;
   }
 
   // ── Score Computation ──────────────────────────────────

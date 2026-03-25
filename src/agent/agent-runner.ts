@@ -134,6 +134,9 @@ export class AgentRunner {
 
     this.log(t().agentStarting(agent.id, task.id));
 
+    // 0. Detect conventions (cached after first call)
+    await this.contextBuilder.detectConventions(this.config.workingDirectory);
+
     // 1. Memory-aware prompt oluştur
     const prompt = this.contextBuilder.buildPrompt(task, memory, agent);
     this.log(t().promptReady(prompt.length));
