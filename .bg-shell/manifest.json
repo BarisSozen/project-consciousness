@@ -1,16 +1,1 @@
-[
-  {
-    "id": "b561c920",
-    "label": "ship-guard2",
-    "command": "cd /mnt/c/Users/Baris/project-consciousness && npx tsc --noEmit 2>&1 && git add -u && git commit --amend --no-edit 2>&1 && npm version patch --no-git-tag-version 2>&1 && npm publish --access public 2>&1 && git add package.json && git commit -m \"chore: publish 0.8.3\" 2>&1 && GIT_TERMINAL_PROMPT=0 \"/mnt/c/Program Files/Git/Git/cmd/git.exe\" push --force origin master 2>&1; echo \"EXIT=$?\"",
-    "cwd": "C:\\Users\\Baris\\project-consciousness",
-    "ownerSessionFile": "C:\\Users\\Baris\\.gsd\\sessions\\--C--Users-Baris-project-consciousness--\\2026-03-24T10-01-20-843Z_af0cc4b8-949a-46e1-a23e-bb2cf02dc471.jsonl",
-    "persistAcrossSessions": false,
-    "startedAt": 1774370325036,
-    "processType": "generic",
-    "group": null,
-    "readyPattern": null,
-    "readyPort": null,
-    "pid": 11068
-  }
-]
+[]

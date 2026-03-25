@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(mkdir -p C:/Users/Baris/task-manager-api)",
+      "Read(//c/Users/Baris/**)",
+      "Bash(rm -rf * .*)",
+      "Bash(npm test:*)"
+    ]
+  }
+}
