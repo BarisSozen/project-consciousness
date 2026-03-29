@@ -6,7 +6,7 @@
  * Paralel çalışabilecek task'ları gruplayarak döndürür.
  */
 
-import type { TaskDefinition } from '../types/index.js';
+import type { TaskDefinition, CriticalPathInfo } from '../types/index.js';
 
 export class DependencyGraph {
   private tasks: Map<string, TaskDefinition> = new Map();
@@ -148,5 +148,127 @@ export class DependencyGraph {
 
   get size(): number {
     return this.tasks.size;
+  }
+
+  // ── Critical Path Analysis ─────────────────────────────────
+
+  /**
+   * Task'ın estimatedComplexity değerine göre tahmini süre (saniye).
+   */
+  getTaskDuration(taskId: string): number {
+    const durationMap: Record<string, number> = {
+      trivial: 30,
+      simple: 60,
+      moderate: 120,
+      complex: 240,
+    };
+    const task = this.tasks.get(taskId);
+    if (!task) return 60; // bilinmeyen task → simple varsayımı
+    return durationMap[task.estimatedComplexity] ?? 60;
+  }
+
+  /**
+   * En çok dependent'a sahip task'ı döndürür (bottleneck).
+   * Graf boşsa null döner.
+   */
+  findBottleneck(): string | null {
+    if (this.reverseEdges.size === 0) return null;
+
+    let maxCount = 0;
+    let bottleneck: string | null = null;
+
+    for (const [taskId, dependents] of this.reverseEdges) {
+      if (dependents.size > maxCount) {
+        maxCount = dependents.size;
+        bottleneck = taskId;
+      }
+    }
+
+    return bottleneck;
+  }
+
+  /**
+   * Critical Path hesapla — en uzun bağımlılık zinciri.
+   * Complexity → duration mapping ile tahmini süre verir.
+   */
+  computeCriticalPath(): CriticalPathInfo {
+    if (this.tasks.size === 0) {
+      return { criticalPath: [], estimatedDuration: 0, parallelizableCount: 0, bottleneck: null };
+    }
+
+    // DP: her task için en uzun yol süresi (root'tan kendisine)
+    const longestDuration = new Map<string, number>();
+    // Her task için critical path üzerinde bir önceki task (backtrack için)
+    const predecessor = new Map<string, string | null>();
+
+    /**
+     * Memoized DFS — taskId'nin root'tan kendisine en uzun yol süresini hesaplar.
+     */
+    const computeLongest = (taskId: string): number => {
+      if (longestDuration.has(taskId)) return longestDuration.get(taskId)!;
+
+      const deps = this.edges.get(taskId) ?? new Set<string>();
+      const ownDuration = this.getTaskDuration(taskId);
+
+      if (deps.size === 0) {
+        // Root node — bağımlılığı yok
+        longestDuration.set(taskId, ownDuration);
+        predecessor.set(taskId, null);
+        return ownDuration;
+      }
+
+      let maxDepDuration = 0;
+      let maxDepId: string | null = null;
+
+      for (const depId of deps) {
+        const depDuration = computeLongest(depId);
+        if (depDuration > maxDepDuration) {
+          maxDepDuration = depDuration;
+          maxDepId = depId;
+        }
+      }
+
+      const total = ownDuration + maxDepDuration;
+      longestDuration.set(taskId, total);
+      predecessor.set(taskId, maxDepId);
+      return total;
+    };
+
+    // Tüm task'lar için en uzun yol hesapla
+    for (const taskId of this.edges.keys()) {
+      computeLongest(taskId);
+    }
+
+    // En uzun toplam süreye sahip task'ı bul (critical path sonu)
+    let maxDuration = 0;
+    let criticalEnd: string | null = null;
+
+    for (const [taskId, duration] of longestDuration) {
+      if (duration > maxDuration) {
+        maxDuration = duration;
+        criticalEnd = taskId;
+      }
+    }
+
+    // Critical path'i backtrack ile oluştur (sondan başa)
+    const pathReversed: string[] = [];
+    let current = criticalEnd;
+    while (current !== null) {
+      pathReversed.push(current);
+      current = predecessor.get(current) ?? null;
+    }
+    const criticalPath = pathReversed.reverse();
+
+    // Paralel çalışabilecek task sayısı = toplam - critical path üzerindeki
+    const criticalSet = new Set(criticalPath);
+    const totalTasks = this.edges.size;
+    const parallelizableCount = totalTasks - criticalSet.size;
+
+    return {
+      criticalPath,
+      estimatedDuration: maxDuration,
+      parallelizableCount,
+      bottleneck: this.findBottleneck(),
+    };
   }
 }

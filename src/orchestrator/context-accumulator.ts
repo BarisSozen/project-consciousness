@@ -27,6 +27,11 @@ export interface AccumulatedContext {
   markdown: string;
 }
 
+export interface RankedFileSummary extends FileSummary {
+  /** 0-1 relevance score relative to current task */
+  relevanceScore: number;
+}
+
 export class ContextAccumulator {
   private projectRoot: string;
   /** Running context — grows with each task */
@@ -80,6 +85,108 @@ export class ContextAccumulator {
    */
   getFiles(): FileSummary[] {
     return [...this.accumulated];
+  }
+
+  /**
+   * Task-relevant ranking — sadece mevcut task için önemli export'ları döndür.
+   * Keyword eşleşmesi ile relevance score hesaplar.
+   *
+   * @param taskDescription Mevcut task'ın açıklaması
+   * @param topN En alakalı kaç dosya döndürülsün (default: 10)
+   */
+  getRankedContext(taskDescription: string, topN = 10): AccumulatedContext {
+    if (this.accumulated.length === 0) {
+      return { files: [], markdown: '' };
+    }
+
+    const keywords = this.extractKeywords(taskDescription);
+    const ranked: RankedFileSummary[] = this.accumulated.map(file => ({
+      ...file,
+      relevanceScore: this.computeRelevance(file, keywords),
+    }));
+
+    ranked.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    const top = ranked.slice(0, topN).filter(f => f.relevanceScore > 0);
+
+    return {
+      files: top,
+      markdown: this.renderRankedMarkdown(top),
+    };
+  }
+
+  /**
+   * Task description'ından keyword'leri çıkar.
+   */
+  private extractKeywords(description: string): string[] {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+      'should', 'may', 'might', 'shall', 'can', 'need', 'must', 'and', 'or',
+      'but', 'if', 'then', 'else', 'when', 'up', 'out', 'on', 'off', 'over',
+      'under', 'again', 'further', 'once', 'all', 'each', 'every', 'both',
+      'few', 'more', 'most', 'other', 'some', 'such', 'no', 'not', 'only',
+      'own', 'same', 'so', 'than', 'too', 'very', 'just', 'because', 'as',
+      'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'between',
+      'through', 'from', 'to', 'in', 'into', 'during', 'before', 'after',
+      'this', 'that', 'these', 'those', 'it', 'its', 'create', 'implement',
+      'add', 'write', 'build', 'make', 'update', 'dosya', 'yaz', 'oluştur',
+      'ekle', 'güncelle', 'yap',
+    ]);
+
+    return description
+      .toLowerCase()
+      .replace(/[^a-z0-9çğıöşü\s-]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !stopWords.has(w));
+  }
+
+  /**
+   * Dosya özetini keyword'lere göre skorla.
+   */
+  private computeRelevance(file: FileSummary, keywords: string[]): number {
+    if (keywords.length === 0) return 0.5; // keyword yoksa orta skor
+
+    const fileText = [
+      file.file,
+      ...file.exports,
+      ...file.types,
+      ...file.functions,
+    ].join(' ').toLowerCase();
+
+    let matches = 0;
+    for (const kw of keywords) {
+      if (fileText.includes(kw)) {
+        matches++;
+      }
+    }
+
+    return matches / keywords.length;
+  }
+
+  /**
+   * Ranked context'i markdown olarak render et.
+   */
+  private renderRankedMarkdown(ranked: RankedFileSummary[]): string {
+    if (ranked.length === 0) return '';
+
+    const lines: string[] = ['## Built Artifacts (ranked by relevance)\n'];
+
+    for (const file of ranked) {
+      const score = Math.round(file.relevanceScore * 100);
+      lines.push(`### ${file.file} (${score}% relevant)`);
+      if (file.types.length > 0) {
+        lines.push(`Types: ${file.types.join('; ')}`);
+      }
+      if (file.functions.length > 0) {
+        lines.push(`Functions: ${file.functions.join(', ')}`);
+      }
+      if (file.exports.length > 0 && file.types.length === 0 && file.functions.length === 0) {
+        lines.push(`Exports: ${file.exports.join(', ')}`);
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   // ═══════════════════════════════════════════════════════════

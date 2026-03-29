@@ -10,18 +10,20 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { 
-  MemoryFiles, 
-  MemorySnapshot, 
-  Decision, 
+import type {
+  MemoryFiles,
+  MemorySnapshot,
+  Decision,
   StateData,
   Phase,
   TaskStatus,
-  BlockedTask 
+  BlockedTask,
+  Lesson
 } from '../types/index.js';
 
 export class MemoryLayer {
   private paths: Record<keyof MemoryFiles, string>;
+  private backupDir: string;
 
   constructor(projectRoot: string) {
     this.paths = {
@@ -29,7 +31,9 @@ export class MemoryLayer {
       architecture: join(projectRoot, 'ARCHITECTURE.md'),
       decisions: join(projectRoot, 'DECISIONS.md'),
       state: join(projectRoot, 'STATE.md'),
+      lessons: join(projectRoot, 'LESSONS.md'),
     };
+    this.backupDir = join(projectRoot, '.pc-backup');
   }
 
   // ── Snapshot: Tüm hafızayı tek seferde oku ──────────────
@@ -55,17 +59,18 @@ export class MemoryLayer {
     recentDecisionCount = 10,
     maxCompletedTasks = 5
   ): Promise<MemorySnapshot> {
-    const [mission, architecture, decisionsRaw, stateRaw] = await Promise.all([
+    const [mission, architecture, decisionsRaw, stateRaw, lessons] = await Promise.all([
       this.readFile('mission'),
       this.readFile('architecture'),
       this.readFile('decisions'),
       this.readFile('state'),
+      this.readFile('lessons'),
     ]);
 
     const decisions = this.summarizeDecisions(decisionsRaw, recentDecisionCount);
     const state = this.compressState(stateRaw, maxCompletedTasks);
 
-    const files: MemoryFiles = { mission, architecture, decisions, state };
+    const files: MemoryFiles = { mission, architecture, decisions, state, lessons };
     return {
       files,
       timestamp: new Date().toISOString(),
@@ -74,13 +79,14 @@ export class MemoryLayer {
   }
 
   async readAll(): Promise<MemoryFiles> {
-    const [mission, architecture, decisions, state] = await Promise.all([
+    const [mission, architecture, decisions, state, lessons] = await Promise.all([
       this.readFile('mission'),
       this.readFile('architecture'),
       this.readFile('decisions'),
       this.readFile('state'),
+      this.readFile('lessons'),
     ]);
-    return { mission, architecture, decisions, state };
+    return { mission, architecture, decisions, state, lessons };
   }
 
   // ── Individual File Operations ──────────────────────────
@@ -101,6 +107,10 @@ export class MemoryLayer {
     return this.readFile('state');
   }
 
+  async readLessons(): Promise<string> {
+    return this.readFile('lessons');
+  }
+
   // ── DECISIONS.md: Append-Only ───────────────────────────
 
   async appendDecision(decision: Decision): Promise<void> {
@@ -119,14 +129,31 @@ export class MemoryLayer {
 - **Durum**: ${decision.status}
 `;
     
-    await writeFile(this.paths.decisions, current + entry, 'utf-8');
+    await this.atomicWrite('decisions', current + entry);
+  }
+
+  // ── LESSONS.md: Append-Only ─────────────────────────────
+
+  async appendLesson(lesson: Lesson): Promise<void> {
+    const current = await this.readLessons();
+    const entry = `
+---
+
+## ${lesson.id} — ${lesson.pattern}
+
+- **Çözüm**: ${lesson.fix}
+- **Kaynak**: ${lesson.source}
+- **Tekrar**: ${lesson.occurrences}x
+- **Tarih**: ${lesson.date}
+`;
+    await this.atomicWrite('lessons', current + entry);
   }
 
   // ── STATE.md: Full Rewrite ──────────────────────────────
 
   async updateState(state: StateData): Promise<void> {
     const content = this.renderState(state);
-    await writeFile(this.paths.state, content, 'utf-8');
+    await this.atomicWrite('state', content);
   }
 
   async parseState(): Promise<StateData> {
@@ -266,7 +293,45 @@ ${blockedTasks || '_yok_'}
     try {
       return await readFile(this.paths[key], 'utf-8');
     } catch {
+      if (key === 'lessons') return ''; // LESSONS.md may not exist yet
       throw new Error(`Memory file not found: ${this.paths[key]}`);
+    }
+  }
+
+  /**
+   * Atomic dosya yazma — write-then-rename pattern.
+   * Yazma sırasında crash olursa orijinal dosya bozulmaz.
+   */
+  private async atomicWrite(key: keyof MemoryFiles, content: string): Promise<void> {
+    const { mkdir, writeFile: wf, rename } = await import('node:fs/promises');
+    const filePath = this.paths[key];
+    const tmpPath = filePath + '.tmp';
+
+    // Backup oluştur
+    await mkdir(this.backupDir, { recursive: true });
+    try {
+      const existing = await readFile(filePath, 'utf-8');
+      await wf(join(this.backupDir, `${key}.bak`), existing, 'utf-8');
+    } catch {
+      // İlk yazma — backup yok, sorun değil
+    }
+
+    // Atomic write: tmp → rename
+    await wf(tmpPath, content, 'utf-8');
+    await rename(tmpPath, filePath);
+  }
+
+  /**
+   * Backup'tan dosya kurtarma — bozuk dosya tespit edildiğinde kullanılır.
+   */
+  async restoreFromBackup(key: keyof MemoryFiles): Promise<boolean> {
+    try {
+      const backupPath = join(this.backupDir, `${key}.bak`);
+      const backup = await readFile(backupPath, 'utf-8');
+      await writeFile(this.paths[key], backup, 'utf-8');
+      return true;
+    } catch {
+      return false;
     }
   }
 

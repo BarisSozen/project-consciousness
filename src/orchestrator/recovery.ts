@@ -9,7 +9,7 @@
 
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Checkpoint } from '../types/index.js';
+import type { Checkpoint, RetryContext } from '../types/index.js';
 
 const CHECKPOINT_FILE = '.pc-checkpoint.json';
 
@@ -38,6 +38,19 @@ export class RecoveryManager {
   }
 
   /**
+   * Checkpoint'i kısmen güncelle — tam yeniden yazma gerektirmez.
+   * Mevcut checkpoint'i oku, merge et, yaz.
+   */
+  async updateCheckpoint(partial: Partial<Checkpoint>): Promise<void> {
+    const current = await this.loadCheckpoint();
+    if (!current) {
+      throw new Error('No existing checkpoint to update');
+    }
+    const merged: Checkpoint = { ...current, ...partial, timestamp: new Date().toISOString() };
+    await this.saveCheckpoint(merged);
+  }
+
+  /**
    * Son checkpoint'i oku
    */
   async loadCheckpoint(): Promise<Checkpoint | null> {
@@ -63,6 +76,50 @@ export class RecoveryManager {
   }
 
   /**
+   * Sub-task tamamlandığında checkpoint'e ekle.
+   */
+  async addCompletedSubTask(subTaskId: string): Promise<void> {
+    const current = await this.loadCheckpoint();
+    if (!current) return;
+    if (!current.completedSubTasks.includes(subTaskId)) {
+      current.completedSubTasks.push(subTaskId);
+      current.timestamp = new Date().toISOString();
+      await this.saveCheckpoint(current);
+    }
+  }
+
+  /**
+   * Agent'ın ürettiği dosyayı pending artifacts'a ekle.
+   */
+  async addPendingArtifact(filePath: string): Promise<void> {
+    const current = await this.loadCheckpoint();
+    if (!current) return;
+    if (!current.pendingArtifacts.includes(filePath)) {
+      current.pendingArtifacts.push(filePath);
+      current.timestamp = new Date().toISOString();
+      await this.saveCheckpoint(current);
+    }
+  }
+
+  /**
+   * Retry context'i kaydet — agent tekrar çalıştırılacaksa hata bilgisini sakla.
+   */
+  async setRetryContext(retryContext: RetryContext): Promise<void> {
+    await this.updateCheckpoint({ retryContext });
+  }
+
+  /**
+   * Retry başarılı olduktan sonra retry context'i temizle.
+   */
+  async clearRetryContext(): Promise<void> {
+    const current = await this.loadCheckpoint();
+    if (!current) return;
+    delete current.retryContext;
+    current.timestamp = new Date().toISOString();
+    await this.saveCheckpoint(current);
+  }
+
+  /**
    * Checkpoint'i sil (temiz başlangıç veya tamamlanma sonrası)
    */
   async clearCheckpoint(): Promise<void> {
@@ -78,10 +135,21 @@ export class RecoveryManager {
    * Kullanıcıya devam etmek isteyip istemediğini sor
    */
   async promptResume(checkpoint: Checkpoint): Promise<boolean> {
+    const currentTask = checkpoint.currentTaskId ? `\n  Aktif Task: ${checkpoint.currentTaskId}` : '';
+    const subTasks = checkpoint.completedSubTasks.length > 0
+      ? `\n  Sub-tasks: ${checkpoint.completedSubTasks.length} tamamlandı`
+      : '';
+    const artifacts = checkpoint.pendingArtifacts.length > 0
+      ? `\n  Bekleyen Dosyalar: ${checkpoint.pendingArtifacts.length} dosya commit edilmemiş`
+      : '';
+    const retry = checkpoint.retryContext
+      ? `\n  ⚠️ Son task retry bekliyor (attempt ${checkpoint.retryContext.attempt})`
+      : '';
+
     const msg = `\n📌 Önceki session bulundu:
   Session: ${checkpoint.sessionId}
   Milestone: ${checkpoint.milestoneId}
-  Tamamlanan: ${checkpoint.completedMilestones.length} milestone, ${checkpoint.completedTasks.length} task
+  Tamamlanan: ${checkpoint.completedMilestones.length} milestone, ${checkpoint.completedTasks.length} task${currentTask}${subTasks}${artifacts}${retry}
   Tarih: ${checkpoint.timestamp}
 
   Devam edilsin mi? (e/h): `;

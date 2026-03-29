@@ -93,6 +93,16 @@ export class AgentRunner {
     });
   }
 
+  /** Error pattern tracker'dan gelen bilinen hataları agent context'ine enjekte et */
+  setKnownPitfalls(pitfalls: string): void {
+    this.contextBuilder.setKnownPitfalls(pitfalls);
+  }
+
+  /** Agent token limitini ayarla */
+  setTokenLimit(limit: number): void {
+    this.contextBuilder.setTokenLimit(limit);
+  }
+
   // ── Health Check ────────────────────────────────────────
 
   async checkHealth(): Promise<{ ready: boolean; details: string }> {

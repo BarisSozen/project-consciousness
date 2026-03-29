@@ -13,6 +13,7 @@ export interface MemoryFiles {
   architecture: string;
   decisions: string;
   state: string;
+  lessons: string;
 }
 
 export interface MemorySnapshot {
@@ -155,7 +156,7 @@ export interface EscalationResponse {
 
 export interface AgentConfig {
   id: string;
-  type: 'coder' | 'reviewer' | 'tester' | 'documenter' | 'tracer';
+  type: AgentType;
   capabilities: string[];
 }
 
@@ -329,10 +330,125 @@ export interface MilestonePlan {
 export interface Checkpoint {
   sessionId: string;
   milestoneId: string;
-  taskId?: string;
   completedMilestones: string[];
   completedTasks: string[];
   timestamp: string;
+  /** Currently executing task (null if between tasks) */
+  currentTaskId: string | null;
+  /** Sub-tasks completed within the current parent task */
+  completedSubTasks: string[];
+  /** Files produced by agents but not yet committed */
+  pendingArtifacts: string[];
+  /** Last known good memory hash for corruption detection */
+  memoryHash: string;
+  /** Index into plan.executionOrder — which group we're on */
+  executionGroupIndex: number;
+  /** Retry context if the last task failed and is being retried */
+  retryContext?: RetryContext;
+}
+
+// ============================================================
+// Agent Learning Types
+// ============================================================
+
+export interface RetryContext {
+  taskId: string;
+  attempt: number;
+  previousOutput: string;
+  evaluationFeedback: string;
+  specificFixes: string[];
+  failedChecks: string[];
+  lastError: string;
+}
+
+export interface ErrorPattern {
+  id: string;                // EP001, EP002...
+  pattern: string;           // "hardcoded-connection-string"
+  category: 'type-error' | 'anti-scope' | 'convention' | 'logic';
+  occurrences: number;
+  firstSeen: string;
+  fix: string;
+  affectedTasks: string[];
+}
+
+export interface Lesson {
+  id: string;                // L001, L002...
+  pattern: string;
+  fix: string;
+  source: string;            // session ID
+  occurrences: number;
+  date: string;
+}
+
+// ============================================================
+// Context Intelligence Types
+// ============================================================
+
+export type AgentType = 'coder' | 'reviewer' | 'tester' | 'documenter' | 'tracer';
+
+export type CodebaseFocus =
+  | 'implementation-files'
+  | 'test-files-and-interfaces'
+  | 'changed-files'
+  | 'public-api-files'
+  | 'all';
+
+export interface TokenBudget {
+  /** Total token limit for the agent */
+  total: number;
+  /** Fixed persona section budget */
+  persona: number;
+  /** Fixed conventions section budget */
+  conventions: number;
+  /** Dynamic memory section budget (40% of remaining) */
+  memory: number;
+  /** Dynamic codebase section budget (35% of remaining) */
+  codebase: number;
+  /** Dynamic task section budget (25% of remaining) */
+  task: number;
+}
+
+export interface ContextProfile {
+  /** Memory file read priority — first = most important */
+  memoryPriority: Array<keyof MemoryFiles | 'lessons'>;
+  /** Which codebase files to focus on */
+  codebaseFocus: CodebaseFocus;
+  /** Whether to include test execution history */
+  includeTestHistory: boolean;
+}
+
+// ============================================================
+// Orchestration Intelligence Types
+// ============================================================
+
+export interface CriticalPathInfo {
+  /** Ordered task IDs forming the longest dependency chain */
+  criticalPath: string[];
+  /** Estimated total duration of critical path in seconds */
+  estimatedDuration: number;
+  /** Number of tasks that can run in parallel off critical path */
+  parallelizableCount: number;
+  /** Task ID with most dependents (bottleneck) */
+  bottleneck: string | null;
+}
+
+export interface FileLockConflict {
+  file: string;
+  heldBy: string; // taskId
+}
+
+export interface LockResult {
+  acquired: boolean;
+  conflicts: FileLockConflict[];
+}
+
+export interface OrphanReport {
+  /** Files from checkpoint that exist on disk but weren't committed */
+  matched: string[];
+  /** Unstaged files not in checkpoint — unknown origin */
+  unmatched: string[];
+  /** Whether any orphans were found */
+  hasOrphans: boolean;
 }
 
 // ============================================================

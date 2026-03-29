@@ -14,9 +14,14 @@ import { AuditGate } from './audit-gate.js';
 import { ContextAccumulator } from './context-accumulator.js';
 import { TaskSplitter } from './task-splitter.js';
 import { ShipCheck } from './ship-check.js';
+import { DynamicScheduler } from './dynamic-scheduler.js';
+import { ErrorPatternTracker } from './error-pattern-tracker.js';
+import { FileLockManager, estimateTargetFiles } from './file-lock.js';
+import { RecoveryManager } from './recovery.js';
+import { OrphanDetector } from './orphan-detector.js';
 import { resolveProvider } from '../llm/resolve.js';
 import { t, setLocale } from '../i18n/index.js';
-import type { 
+import type {
   OrchestratorConfig,
   TaskPlan,
   TaskDefinition,
@@ -25,6 +30,7 @@ import type {
   AgentResult,
   EvaluationResult,
   EscalationResponse,
+  RetryContext,
   Phase,
   Decision,
 } from '../types/index.js';
@@ -38,11 +44,18 @@ export class Orchestrator {
   private auditGate: AuditGate;
   private contextAccumulator: ContextAccumulator;
   private taskSplitter: TaskSplitter;
+  private scheduler: DynamicScheduler;
+  private errorTracker: ErrorPatternTracker;
+  private fileLockManager: FileLockManager;
+  private recovery: RecoveryManager;
+  private orphanDetector: OrphanDetector;
   private config: OrchestratorConfig;
   private steps: OrchestrationStep[] = [];
   private sessionId: string;
   /** Full task list — plan'dan populate edilir */
   private taskMap: Map<string, TaskDefinition> = new Map();
+  /** Retry contexts per task */
+  private retryContexts: Map<string, RetryContext> = new Map();
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
@@ -70,6 +83,11 @@ export class Orchestrator {
     );
     this.contextAccumulator = new ContextAccumulator(config.projectRoot);
     this.taskSplitter = new TaskSplitter();
+    this.scheduler = new DynamicScheduler();
+    this.errorTracker = new ErrorPatternTracker(config.projectRoot);
+    this.fileLockManager = new FileLockManager();
+    this.recovery = new RecoveryManager(config.projectRoot);
+    this.orphanDetector = new OrphanDetector(config.projectRoot);
     this.sessionId = `session-${Date.now()}`;
   }
 
@@ -77,7 +95,23 @@ export class Orchestrator {
 
   async run(brief: string): Promise<OrchestrationSession> {
     this.log(t().orchestratorStarting);
-    
+
+    // 0. Recovery check — önceki session'dan kalan checkpoint var mı?
+    if (await this.recovery.canResume()) {
+      const checkpoint = await this.recovery.loadCheckpoint();
+      if (checkpoint) {
+        const orphanReport = await this.orphanDetector.detect(checkpoint);
+        if (orphanReport.hasOrphans) {
+          this.log(this.orphanDetector.formatReport(orphanReport));
+        }
+        // TODO: Resume flow — şimdilik log'la, ileride tam entegrasyon
+        this.log(`  📌 Önceki session checkpoint bulundu: ${checkpoint.completedTasks.length} task tamamlanmış`);
+      }
+    }
+
+    // 0.5 Error pattern tracker'ı yükle
+    await this.errorTracker.load();
+
     // 1. Validate memory integrity
     await this.validateMemory();
 
@@ -171,7 +205,21 @@ export class Orchestrator {
       status: 'active',
     });
 
-    // 9. Session summary
+    // 9. Promote error patterns to LESSONS.md
+    const lessons = this.errorTracker.toLessons(this.sessionId);
+    if (lessons.length > 0) {
+      this.log(`\n📚 ${lessons.length} error pattern(s) promoted to LESSONS.md`);
+      for (const lesson of lessons) {
+        await this.memory.appendLesson(lesson);
+      }
+    }
+    await this.errorTracker.save();
+
+    // 10. Clear checkpoint on successful completion
+    await this.recovery.clearCheckpoint();
+    this.fileLockManager.releaseAll();
+
+    // 11. Session summary
     return {
       sessionId: this.sessionId,
       startedAt: new Date().toISOString(),
@@ -181,43 +229,137 @@ export class Orchestrator {
     };
   }
 
-  // ── Plan Execution ──────────────────────────────────────
+  // ── Plan Execution (Dynamic Scheduler) ──────────────────
 
   private async executePlan(plan: TaskPlan): Promise<void> {
     await this.transitionPhase('executing');
 
-    for (let groupIdx = 0; groupIdx < plan.executionOrder.length; groupIdx++) {
-      const group = plan.executionOrder[groupIdx]!;
-      this.log(t().stepHeader(groupIdx + 1, plan.executionOrder.length, group.join(', ')));
+    // Initialize dynamic scheduler
+    this.scheduler.loadTasks(plan.tasks);
 
-      // Her task grubunu yürüt (paralel veya sıralı)
-      const tasks = group
-        .map(id => plan.tasks.find(t => t.id === id))
-        .filter((t): t is NonNullable<typeof t> => t != null);
+    // Initialize checkpoint
+    const memorySnap = await this.memory.snapshot();
+    await this.recovery.saveCheckpoint({
+      sessionId: this.sessionId,
+      milestoneId: 'current',
+      completedMilestones: [],
+      completedTasks: [],
+      timestamp: new Date().toISOString(),
+      currentTaskId: null,
+      completedSubTasks: [],
+      pendingArtifacts: [],
+      memoryHash: memorySnap.hash,
+      executionGroupIndex: 0,
+    });
 
-      if (tasks.length <= this.config.maxParallelAgents) {
-        // Paralel çalıştır — gerçek agent runner ile
-        const memory = await this.memory.snapshot();
-        const results = await this.agentRunner.runParallel(
-          tasks,
-          memory,
-          this.config.maxParallelAgents
+    // Inject known pitfalls into agent context
+    const pitfalls = this.errorTracker.getKnownPitfalls();
+    if (pitfalls) {
+      this.agentRunner.setKnownPitfalls(pitfalls);
+    }
+
+    // Event-driven execution loop
+    let round = 0;
+    while (!this.scheduler.isComplete()) {
+      const ready = this.scheduler.getReady();
+      if (ready.length === 0) break; // deadlock guard
+
+      round++;
+      const status = this.scheduler.getStatus();
+      this.log(`\n── Round ${round} — ${ready.length} ready, ${status.running} running, ${status.completed}/${plan.tasks.length} done ──`);
+
+      // Filter by file lock availability
+      const runnable: TaskDefinition[] = [];
+      const deferred: TaskDefinition[] = [];
+
+      for (const task of ready) {
+        const estimatedFiles = estimateTargetFiles(
+          `${task.title} ${task.description}`,
+          this.config.projectRoot
         );
-        
-        // Her sonucu değerlendir
-        for (const result of results) {
-          await this.evaluateAndProcess(result);
+        const lockResult = this.fileLockManager.acquire(task.id, estimatedFiles);
+        if (lockResult.acquired) {
+          runnable.push(task);
+        } else {
+          deferred.push(task);
+          this.log(`  🔒 ${task.id} deferred — file conflict with ${lockResult.conflicts.map(c => c.heldBy).join(', ')}`);
         }
-      } else {
-        // Sıralı çalıştır
-        for (const task of tasks) {
-          const result = await this.executeTask(task.id);
-          if (result) {
+      }
+
+      // Run tasks (up to maxParallelAgents)
+      const batch = runnable.slice(0, this.config.maxParallelAgents);
+      for (const task of batch) {
+        this.scheduler.markRunning(task.id);
+      }
+
+      if (batch.length > 1) {
+        // Parallel execution
+        const memory = await this.memory.snapshot();
+        const results = await this.agentRunner.runParallel(batch, memory, this.config.maxParallelAgents);
+
+        for (const result of results) {
+          this.fileLockManager.release(result.taskId);
+
+          // Update checkpoint with pending artifacts
+          for (const artifact of result.artifacts) {
+            await this.recovery.addPendingArtifact(artifact);
+          }
+
+          if (result.success) {
+            const newReady = this.scheduler.markDone(result.taskId);
             await this.evaluateAndProcess(result);
+            await this.recovery.updateCheckpoint({
+              completedTasks: [...(await this.recovery.loadCheckpoint())?.completedTasks ?? [], result.taskId],
+              currentTaskId: null,
+            });
+            if (newReady.length > 0) {
+              this.log(`  🔓 Unlocked: ${newReady.map(t2 => t2.id).join(', ')}`);
+            }
+          } else {
+            const skipped = this.scheduler.markFailed(result.taskId);
+            await this.evaluateAndProcess(result);
+            if (skipped.length > 0) {
+              this.log(`  ⏭️ Skipped (dependency failed): ${skipped.join(', ')}`);
+            }
+          }
+        }
+      } else if (batch.length === 1) {
+        // Single task execution
+        const task = batch[0]!;
+        await this.recovery.updateCheckpoint({ currentTaskId: task.id });
+
+        const result = await this.executeTask(task.id);
+        this.fileLockManager.release(task.id);
+
+        if (result) {
+          for (const artifact of result.artifacts) {
+            await this.recovery.addPendingArtifact(artifact);
+          }
+
+          if (result.success) {
+            const newReady = this.scheduler.markDone(task.id);
+            await this.evaluateAndProcess(result);
+            await this.recovery.updateCheckpoint({
+              completedTasks: [...(await this.recovery.loadCheckpoint())?.completedTasks ?? [], task.id],
+              currentTaskId: null,
+            });
+            if (newReady.length > 0) {
+              this.log(`  🔓 Unlocked: ${newReady.map(t2 => t2.id).join(', ')}`);
+            }
+          } else {
+            const skipped = this.scheduler.markFailed(task.id);
+            await this.evaluateAndProcess(result);
+            if (skipped.length > 0) {
+              this.log(`  ⏭️ Skipped (dependency failed): ${skipped.join(', ')}`);
+            }
           }
         }
       }
     }
+
+    // Log scheduler final status
+    const finalStatus = this.scheduler.getStatus();
+    this.log(`\n📊 Execution complete: ${finalStatus.completed} done, ${finalStatus.failed} failed, ${finalStatus.skipped} skipped`);
 
     await this.transitionPhase('reviewing');
     this.log(t().allTasksComplete);
@@ -406,6 +548,40 @@ export class Orchestrator {
       return;
     }
 
+    // Build RetryContext for feedback injection
+    const specificFixes = evaluation.issues.map(i => `[${i.severity}] ${i.category}: ${i.description}`);
+    const failedChecks = 'checks' in evaluation
+      ? (evaluation as { checks: Array<{ name: string; passed: boolean }> }).checks
+          .filter(c => !c.passed)
+          .map(c => c.name)
+      : [];
+
+    const retryCtx: RetryContext = {
+      taskId: result.taskId,
+      attempt: retryCount + 1,
+      previousOutput: result.output.slice(0, 2000),
+      evaluationFeedback: evaluation.feedback ?? 'Quality checks failed.',
+      specificFixes,
+      failedChecks,
+      lastError: result.output.slice(-500),
+    };
+
+    // Save retry context to checkpoint
+    this.retryContexts.set(result.taskId, retryCtx);
+    await this.recovery.setRetryContext(retryCtx);
+
+    // Record error patterns for learning
+    for (const issue of evaluation.issues) {
+      this.errorTracker.record(
+        result.taskId,
+        issue.category === 'mission-drift' ? 'logic' :
+        issue.category === 'architecture-violation' ? 'convention' :
+        issue.category === 'scope-creep' ? 'anti-scope' : 'logic',
+        issue.description,
+        `Fix: ${issue.description}`
+      );
+    }
+
     const locale = t();
     const issueList = evaluation.issues
       .map(i => `- [${i.severity}] ${i.category}: ${i.description}`)
@@ -450,6 +626,8 @@ ${locale.retryFixInstruction}`,
 
     if (retryEval.verdict === 'accept') {
       this.log(`  ✅ Accepted after retry ${retryCount + 1}`);
+      this.retryContexts.delete(result.taskId);
+      await this.recovery.clearRetryContext();
       await this.markTaskComplete(retryResult);
     } else {
       // revise veya escalate → tekrar dene
