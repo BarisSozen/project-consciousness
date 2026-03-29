@@ -72,6 +72,7 @@ export class Orchestrator {
       timeout: 120_000,
       maxDepth: 3,
       log: (msg) => this.log(msg),
+      modelRouting: config.modelRouting,
     });
     this.planner = new Planner(config);
     this.evaluator = new Evaluator(config);

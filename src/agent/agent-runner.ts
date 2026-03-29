@@ -12,11 +12,14 @@ import { ProcessSpawner } from './process-spawner.js';
 import { ContextBuilder } from './context-builder.js';
 import { OutputParser } from './output-parser.js';
 import { t } from '../i18n/index.js';
-import type { 
-  AgentConfig, 
-  AgentResult, 
+import type {
+  AgentConfig,
+  AgentType,
+  AgentResult,
   MemorySnapshot,
-  TaskDefinition 
+  ModelRoutingConfig,
+  ModelTier,
+  TaskDefinition
 } from '../types/index.js';
 
 export interface AgentRunnerConfig {
@@ -34,6 +37,8 @@ export interface AgentRunnerConfig {
   env?: Record<string, string>;
   /** Log function */
   log?: (message: string) => void;
+  /** Model routing configuration */
+  modelRouting?: ModelRoutingConfig;
 }
 
 export class AgentRunner {
@@ -153,10 +158,10 @@ export class AgentRunner {
 
     // 2. Claude CLI spawn et
     const startTime = Date.now();
-    
+
     try {
-      // Build CLI flags for tool permissions
-      const flags = this.buildCliFlags();
+      // Build CLI flags for tool permissions + model routing
+      const flags = this.buildCliFlags(task, agent.type as AgentType);
 
       const processResult = await this.spawner.spawn({
         prompt,
@@ -234,9 +239,58 @@ export class AgentRunner {
     return results;
   }
 
+  // ── Model Routing ────────────────────────────────────────
+
+  /** Default model identifiers for each tier */
+  private static readonly DEFAULT_MODEL_IDS: Record<ModelTier, string> = {
+    opus: 'opus',
+    sonnet: 'sonnet',
+    haiku: 'haiku',
+  };
+
+  /**
+   * Task complexity + agent type → model tier.
+   *
+   * Routing logic:
+   *   critical/complex tasks  → opus  (judgement & architecture)
+   *   reviewer agent          → opus  (always needs judgement)
+   *   moderate tasks          → sonnet (good balance)
+   *   trivial/simple tasks    → haiku  (fast & cheap)
+   */
+  resolveModel(task: TaskDefinition, agentType: AgentType): ModelTier {
+    const routing = this.config.modelRouting;
+
+    // Force override — disables all routing
+    if (routing?.forceModel) return routing.forceModel;
+
+    // Critical/complex → opus
+    if (task.priority === 'critical' || task.estimatedComplexity === 'complex') {
+      return 'opus';
+    }
+
+    // Reviewer always needs judgement → opus
+    if (agentType === 'reviewer') {
+      return 'opus';
+    }
+
+    // Moderate → sonnet
+    if (task.estimatedComplexity === 'moderate' || task.priority === 'high') {
+      return 'sonnet';
+    }
+
+    // Trivial/simple → haiku
+    return routing?.defaultModel ?? 'haiku';
+  }
+
+  /** Get the CLI model string for a tier */
+  private getModelId(tier: ModelTier): string {
+    const routing = this.config.modelRouting;
+    return routing?.modelIds?.[tier] ?? AgentRunner.DEFAULT_MODEL_IDS[tier];
+  }
+
   // ── CLI Flags ────────────────────────────────────────────
 
-  private buildCliFlags(): string[] {
+  private buildCliFlags(task?: TaskDefinition, agentType?: AgentType): string[] {
     const flags: string[] = [];
 
     // Permission bypass — agent'lar sandbox'ta çalışır, tool'ları kullanabilmeli
@@ -246,6 +300,14 @@ export class AgentRunner {
     const tools = this.config.allowedTools ?? ['Read', 'Write', 'Edit', 'Bash'];
     if (tools.length > 0) {
       flags.push('--allowedTools', tools.join(','));
+    }
+
+    // Model routing — task'a göre model seç
+    if (task && agentType) {
+      const tier = this.resolveModel(task, agentType);
+      const modelId = this.getModelId(tier);
+      flags.push('--model', modelId);
+      this.log(`  🎯 Model: ${modelId} (${tier}) for ${task.id} [${task.estimatedComplexity}/${task.priority}]`);
     }
 
     return flags;

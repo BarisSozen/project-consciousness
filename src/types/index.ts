@@ -115,6 +115,8 @@ export interface OrchestratorConfig {
   escalationThreshold: number; // 0-1, below this → escalate
   maxParallelAgents: number;
   verbose: boolean;
+  /** Model routing — assign different models to different task complexities */
+  modelRouting?: ModelRoutingConfig;
 }
 
 export interface EvaluationResult {
@@ -385,6 +387,19 @@ export interface Lesson {
 // ============================================================
 
 export type AgentType = 'coder' | 'reviewer' | 'tester' | 'documenter' | 'tracer';
+
+/** Model tier for cost/speed routing */
+export type ModelTier = 'opus' | 'sonnet' | 'haiku';
+
+/** Model routing configuration — override defaults per agent/complexity */
+export interface ModelRoutingConfig {
+  /** Default model for unmatched tasks */
+  defaultModel: ModelTier;
+  /** Model CLI identifiers — maps tier to actual model string for --model flag */
+  modelIds: Record<ModelTier, string>;
+  /** Force a specific model for all tasks (disables routing) */
+  forceModel?: ModelTier;
+}
 
 export type CodebaseFocus =
   | 'implementation-files'
